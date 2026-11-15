@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:vigilancia_durazno/core/utils/canonical_json.dart';
 import 'package:vigilancia_durazno/data/api/api_client.dart';
 import 'package:vigilancia_durazno/data/api/secure_store.dart';
 import 'package:vigilancia_durazno/data/app_services.dart';
@@ -36,6 +37,37 @@ class BackendDePrueba {
   /// Respuestas para rutas que el backend real aún no implementa (lotes, trampas…), SOLO
   /// para probar la lógica del cliente cuando esas rutas existan. Clave = «GET /ruta».
   final respuestasExtra = <String, Object?>{};
+
+  /* ------------------------------------------------------------------ sincronización */
+
+  /// Operaciones recibidas en `POST /sincronizacion/lotes` (en el orden del lote).
+  final operacionesRecibidas = <Map<String, dynamic>>[];
+
+  /// Registros (`registro_id`) que el servidor dejará en «revisar» con este motivo.
+  final porRevisar = <String, String>{};
+
+  /// Registros (`registro_id`) que el servidor rechazará con este motivo.
+  final rechazadas = <String, String>{};
+
+  /// Decisiones enviadas a `POST /sincronizacion/operaciones/{id}/resolucion`.
+  final resoluciones = <Map<String, dynamic>>[];
+
+  /// Cambios que entregará `GET /sincronizacion/cambios`, en orden de inserción.
+  final cambiosServidor = <Map<String, dynamic>>[];
+
+  /// Registros que el servidor ya aplicó (para las aserciones de las pruebas).
+  final registrosAplicados = <String>[];
+
+  /// `visi_id` aceptados (visitas de este lote o de lotes anteriores).
+  final _visitasAceptadas = <String>{};
+
+  /// `(disp_id, cliente_id)` → hash de la primera recepción (idempotencia R-T4).
+  final _porCliente = <String, String>{};
+
+  /// Bandeja: operaciones en «revisar» o «rechazada».
+  final _bandeja = <Map<String, dynamic>>[];
+
+  var _sigOper = 1000;
 
   final _cuentas = <String, _Cuenta>{};
   final _avisos = <Map<String, dynamic>>[];
@@ -158,6 +190,20 @@ class BackendDePrueba {
           a['leida'] = true;
         }
         return _json(204, null);
+
+      /* ---------------------------------------------------------- sincronización (Sprint 2) */
+      case ('POST', '/sincronizacion/lotes'):
+        return _lotes(req);
+      case ('GET', '/sincronizacion/operaciones'):
+        return _json(200, _bandeja);
+      case ('GET', '/sincronizacion/cambios'):
+        return _cambios(req);
+    }
+
+    final resolucion = RegExp(r'^/sincronizacion/operaciones/(\d+)/resolucion$')
+        .firstMatch(ruta);
+    if (req.method == 'POST' && resolucion != null) {
+      return _resolverOperacion(int.parse(resolucion[1]!));
     }
     final leida = RegExp(r'^/yo/notificaciones/(\d+)/leida$').firstMatch(ruta);
     if (req.method == 'POST' && leida != null) {
@@ -176,6 +222,220 @@ class BackendDePrueba {
 
   List<Map<String, dynamic>> _de(_Cuenta c) =>
       _avisos.where((a) => a['usua_id'] == c.id).toList();
+
+  /* ================================================================ sincronización */
+
+  /// `POST /sincronizacion/lotes`: valida el sobre, la huella y el orden; responde por
+  /// operación (nunca todo o nada) igual que el backend real.
+  http.Response _lotes(http.Request req) {
+    final b = jsonDecode(req.body) as Map<String, dynamic>;
+    final dispId = b['disp_id']?.toString() ?? '';
+    final operaciones = (b['operaciones'] as List?) ?? const [];
+    if (dispId.isEmpty) {
+      return _problema(422, 'DISP_ID_REQUERIDO', 'Falta disp_id.');
+    }
+    if (operaciones.isEmpty || operaciones.length > 200) {
+      return _problema(422, 'LOTE_INVALIDO',
+          'El lote debe tener entre 1 y 200 operaciones.');
+    }
+
+    final resultados = <Map<String, dynamic>>[];
+    for (final raw in operaciones) {
+      final op = Map<String, dynamic>.from(raw as Map);
+      operacionesRecibidas.add(op);
+      final registroId = op['registro_id']?.toString() ?? '';
+      final clienteId = op['cliente_id']?.toString() ?? '';
+      final entidad = op['entidad']?.toString() ?? '';
+      final hash = op['hash_contenido']?.toString() ?? '';
+
+      // Mismo contenido canónico que `huella.contenido_canonico` del backend.
+      final contenido = <String, dynamic>{
+        'entidad': entidad,
+        'accion': op['accion'],
+        'registro_id': registroId,
+        'version': op['version'],
+        'linaje': op['linaje'],
+        't_observacion': CanonicalJson.instanteCanonico(
+            DateTime.parse(op['t_observacion'].toString())),
+        'datos': op['datos'],
+      };
+      if (CanonicalJson.sha256Hex(contenido) != hash) {
+        resultados.add(_resultado(op, null, 'rechazada',
+            codigo: 'HUELLA_INVALIDA',
+            motivo: 'La huella del contenido no coincide con lo enviado.'));
+        continue;
+      }
+
+      // Idempotencia R-T4: (disp_id, cliente_id) es la clave.
+      final clave = '$dispId|$clienteId';
+      final previo = _porCliente[clave];
+      if (previo != null) {
+        resultados.add(_resultado(
+            op, null, previo == hash ? 'idempotente_repetida' : 'rechazada',
+            codigo: previo == hash ? null : 'CONFLICTO_CONTENIDO',
+            motivo: previo == hash
+                ? null
+                : 'Mismo cliente_id con otro contenido.'));
+        continue;
+      }
+
+      // La lectura necesita una visita ACEPTADA antes (orden del contrato).
+      if (entidad == 'lectura_trampa') {
+        final datos = Map<String, dynamic>.from(op['datos'] as Map);
+        final visiId = datos['visi_id']?.toString();
+        if (visiId == null || !_visitasAceptadas.contains(visiId)) {
+          _porCliente[clave] = hash;
+          resultados.add(_resultado(op, null, 'rechazada',
+              codigo: 'REFERENCIA_PENDIENTE',
+              motivo: 'La lectura no tiene una visita aceptada.'));
+          continue;
+        }
+      }
+
+      if (rechazadas.containsKey(registroId)) {
+        _porCliente[clave] = hash;
+        final operId = _sigOper++;
+        _bandeja.add(
+            _filaBandeja(operId, op, 'rechazada', rechazadas[registroId]!));
+        resultados.add(_resultado(op, operId, 'rechazada',
+            motivo: rechazadas[registroId]));
+        continue;
+      }
+      if (porRevisar.containsKey(registroId)) {
+        _porCliente[clave] = hash;
+        final operId = _sigOper++;
+        _bandeja
+            .add(_filaBandeja(operId, op, 'revisar', porRevisar[registroId]!));
+        resultados.add(
+            _resultado(op, operId, 'revisar', motivo: porRevisar[registroId]));
+        continue;
+      }
+
+      _porCliente[clave] = hash;
+      final operId = _sigOper++;
+      if (entidad == 'visita') _visitasAceptadas.add(registroId);
+      registrosAplicados.add(registroId);
+      resultados.add(_resultado(op, operId, 'alta_nueva'));
+    }
+
+    final ahora = DateTime.now().toUtc().toIso8601String();
+    return _json(200, {
+      'resultados': resultados,
+      'cursor': '$ahora|$_sigOper',
+      'servidor_utc': ahora,
+    });
+  }
+
+  Map<String, dynamic> _resultado(
+    Map<String, dynamic> op,
+    int? operId,
+    String resultado, {
+    String? codigo,
+    String? motivo,
+  }) =>
+      {
+        'cliente_id': op['cliente_id'],
+        'oper_id': operId,
+        'resultado': resultado,
+        'motivo': motivo,
+        'codigo': codigo,
+        'registro_id': op['registro_id'],
+        'version': op['version'],
+        'reproceso': 'no_aplica',
+        'fecha_efecto': null,
+        'reintentable': false,
+      };
+
+  Map<String, dynamic> _filaBandeja(int operId, Map<String, dynamic> op,
+          String clasificacion, String motivo) =>
+      {
+        'oper_id': operId,
+        'cliente_id': op['cliente_id'],
+        'entidad': op['entidad'],
+        'accion': op['accion'],
+        'registro_id': op['registro_id'],
+        'version': op['version'],
+        'clasificacion': clasificacion,
+        'motivo': motivo,
+        't_captura': op['t_captura'],
+        't_recepcion': DateTime.now().toUtc().toIso8601String(),
+        'datos': op['datos'],
+      };
+
+  /// `POST /sincronizacion/operaciones/{id}/resolucion` (R-T5).
+  http.Response _resolverOperacion(int operId) {
+    final datos = _ultimoCuerpo(
+            'POST', RegExp(r'^/sincronizacion/operaciones/\d+/resolucion$')) ??
+        const <String, dynamic>{};
+    final decision = datos['decision']?.toString() ?? '';
+    final motivo = (datos['motivo']?.toString() ?? '').trim();
+    if (!{'confirmar', 'descartar'}.contains(decision)) {
+      return _problema(422, 'DECISION_INVALIDA', 'La decisión no es válida.');
+    }
+    if (motivo.length < 5) {
+      return _problema(
+          422, 'MOTIVO_CORTO', 'El motivo debe tener al menos 5 caracteres.');
+    }
+    final indice = _bandeja.indexWhere((o) => o['oper_id'] == operId);
+    if (indice < 0) {
+      return _problema(404, 'OPERACION_NO_ENCONTRADA',
+          'La operación no está en la bandeja.');
+    }
+    final original = _bandeja.removeAt(indice);
+    resoluciones.add({
+      'oper_id': operId,
+      'decision': decision,
+      'motivo': motivo,
+    });
+    return _json(200, {
+      'cliente_id': original['cliente_id'],
+      'oper_id': ++_sigOper,
+      'resultado': decision == 'confirmar' ? 'correccion' : 'anulacion',
+      'motivo': motivo,
+      'codigo': null,
+      'registro_id': original['registro_id'],
+      'version': original['version'],
+      'reproceso': 'no_aplica',
+      'fecha_efecto': null,
+      'reintentable': false,
+    });
+  }
+
+  Map<String, dynamic>? _ultimoCuerpo(String metodo, RegExp ruta) {
+    for (final e in cuerpos.entries.toList().reversed) {
+      if (!e.key.startsWith('$metodo ')) continue;
+      final soloRuta = e.key.substring(metodo.length + 1).split('?').first;
+      if (ruta.hasMatch(soloRuta)) {
+        return e.value is Map
+            ? Map<String, dynamic>.from(e.value as Map)
+            : null;
+      }
+    }
+    return null;
+  }
+
+  /// `GET /sincronizacion/cambios?desde=&limite=` con cursor compuesto `<iso>|<id>`.
+  http.Response _cambios(http.Request req) {
+    final desde = req.url.queryParameters['desde'];
+    final limite = int.tryParse(req.url.queryParameters['limite'] ?? '') ?? 100;
+    var inicio = 0;
+    if (desde != null && desde.isNotEmpty) {
+      final i =
+          cambiosServidor.indexWhere((c) => '${c['t']}|${c['id']}' == desde);
+      if (i >= 0) inicio = i + 1;
+    }
+    final pagina = cambiosServidor.skip(inicio).take(limite).toList();
+    final hayMas = inicio + pagina.length < cambiosServidor.length;
+    final cursor = pagina.isEmpty
+        ? (desde ?? '')
+        : '${pagina.last['t']}|${pagina.last['id']}';
+    return _json(200, {
+      'cursor': cursor,
+      'servidor_utc': DateTime.now().toUtc().toIso8601String(),
+      'cambios': pagina,
+      'hay_mas': hayMas,
+    });
+  }
 
   http.Response _login(http.Request req) {
     final b = jsonDecode(req.body) as Map<String, dynamic>;

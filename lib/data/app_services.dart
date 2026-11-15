@@ -41,7 +41,7 @@ class AppServices {
   static TrapsRepository traps = ApiTrapsRepository(api);
   static ReadingsRepository readings = ApiReadingsRepository(pending);
   static MapRepository maps = ApiMapRepository(api);
-  static SyncRepository sync = ApiSyncRepository(pending);
+  static SyncRepository sync = ApiSyncRepository(api, pending);
   static HistoryRepository history = ApiHistoryRepository(api, pending);
   static ProducerRepository producer = ApiProducerRepository(api, pending);
   static ProfileRepository profile = ApiProfileRepository(api);
@@ -61,7 +61,7 @@ class AppServices {
     traps = ApiTrapsRepository(api);
     readings = ApiReadingsRepository(pending);
     maps = ApiMapRepository(api);
-    sync = ApiSyncRepository(pending);
+    sync = ApiSyncRepository(api, pending);
     history = ApiHistoryRepository(api, pending);
     producer = ApiProducerRepository(api, pending);
     profile = ApiProfileRepository(api);

@@ -7,7 +7,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 enum PendingKind {
   lectura('lectura_trampa', 'Lectura de trampa'),
   justificacion('lectura_trampa', 'Trampa no leída'),
-  visita('visita', 'Visita'),
+
+  /// Visita que se envía al servidor, una por lote. Va antes que sus lecturas.
+  visitaCampo('visita', 'Visita de campo'),
+
+  /// Resumen local del historial de visitas; no se envía (eso es [visitaCampo]).
+  visita('visita', 'Historial de visita'),
   resultadoLote('planificacion_lote', 'Resultado de actividad'),
   aplicacion('aplicacion_fitosanitaria', 'Aplicación fitosanitaria'),
   cosecha('cosecha', 'Cosecha');

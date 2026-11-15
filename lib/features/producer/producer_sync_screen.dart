@@ -26,16 +26,14 @@ class _ProducerSyncScreenState extends State<ProducerSyncScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _sync.load());
   }
 
-  RecordStatus _statusOf(int i, SyncItem item) {
+  RecordStatus _statusOf(SyncItem item) {
     if (item.synced) {
       return _sync.phase == SyncPhase.done
           ? RecordStatus.confirmado
           : RecordStatus.enviado;
     }
     if (_sync.phase == SyncPhase.syncing) {
-      return _sync.currentIndex == i
-          ? RecordStatus.enviando
-          : RecordStatus.pendiente;
+      return RecordStatus.pendiente;
     }
     if (_sync.phase == SyncPhase.error) return RecordStatus.local;
     return RecordStatus.pendiente;
@@ -64,7 +62,7 @@ class _ProducerSyncScreenState extends State<ProducerSyncScreen> {
                         SyncRecordTile(
                           title: _sync.items[i].label,
                           date: _sync.items[i].observedAt,
-                          status: _statusOf(i, _sync.items[i]),
+                          status: _statusOf(_sync.items[i]),
                         ),
                         const SizedBox(height: 10),
                       ],
@@ -85,7 +83,6 @@ class _ProducerSyncScreenState extends State<ProducerSyncScreen> {
     final total = _sync.items.length;
     switch (_sync.phase) {
       case SyncPhase.syncing:
-        final sending = (_sync.currentIndex ?? _sync.syncedCount) + 1;
         return [
           const Align(
             alignment: Alignment.centerLeft,
@@ -94,8 +91,7 @@ class _ProducerSyncScreenState extends State<ProducerSyncScreen> {
           ),
           const SizedBox(height: AppSpacing.md),
           ProgressHeader(
-            label:
-                'Enviando ${total == 0 ? 0 : sending.clamp(1, total)} de $total registros...',
+            label: 'Enviando ${_sync.syncedCount} de $total registros...',
             value: total == 0 ? 0 : _sync.syncedCount / total,
           ),
         ];

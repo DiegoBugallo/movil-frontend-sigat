@@ -1,5 +1,6 @@
 import '../models/lot.dart';
 import '../models/reading.dart';
+import '../models/sync_models.dart';
 import '../models/trap.dart';
 import '../models/visit.dart';
 
@@ -44,9 +45,22 @@ abstract class ReadingsRepository {
 
   /// Marca una trampa como no registrada con su motivo.
   Future<void> justifyTrap(
-      {required String trapId, required String lotId, required String reason});
+      {required String trapId,
+      required String lotId,
+      required String reason,
+      String? visitId});
 
   Future<List<Reading>> readingsForLot(String lotId);
+
+  /// Guarda la operación `visita` del lote en la cola local. Debe existir antes
+  /// que sus lecturas; su id y contenido son fijos, así que reenviarla es idempotente.
+  Future<void> saveFieldVisit({
+    required String visiId,
+    required String predioId,
+    required String lotId,
+    required DateTime startedAt,
+    required String label,
+  });
 }
 
 abstract class MapRepository {
@@ -59,9 +73,28 @@ abstract class MapRepository {
 }
 
 abstract class SyncRepository {
+  /// Registros de la cola local que todavía no confirmó el servidor.
   Future<List<SyncItem>> getPending();
-  Future<void> syncItem(SyncItem item);
+
+  /// Hora de la última sincronización confirmada por el servidor (si la hay).
   Future<DateTime?> lastSync();
+
+  /// Sube todo lo pendiente en lotes de hasta 200 operaciones, con las visitas
+  /// primero. La cola local queda actualizada con el resultado de cada operación.
+  Future<SyncPushSummary> push();
+
+  /// Operaciones del usuario en «revisar» o «rechazada» (bandeja del móvil).
+  Future<List<ServerOperation>> inbox();
+
+  /// Confirma o descarta una operación de la bandeja (R-T5).
+  Future<void> resolveOperation(
+    int operId, {
+    required bool confirmar,
+    required String motivo,
+  });
+
+  /// Baja los cambios del servidor desde el cursor guardado.
+  Future<SyncChanges> pullChanges();
 }
 
 abstract class HistoryRepository {

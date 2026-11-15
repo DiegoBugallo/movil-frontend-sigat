@@ -1,6 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vigilancia_durazno/app/routes.dart';
 import 'package:vigilancia_durazno/core/config/api_config.dart';
+import 'package:vigilancia_durazno/core/utils/canonical_json.dart';
 import 'package:vigilancia_durazno/data/app_services.dart';
 import 'package:vigilancia_durazno/data/local/pending_store.dart';
 import 'package:vigilancia_durazno/data/models/producer.dart';
@@ -20,6 +22,7 @@ void main() {
   late String yo;
 
   setUp(() async {
+    SharedPreferences.setMockInitialValues({});
     backend = BackendDePrueba();
     final clave = backend.crearCuenta(
         usuario: 'tec.prueba', nombre: 'Técnico Prueba', rol: 'TECNICO', id: 5);
@@ -147,25 +150,6 @@ void main() {
     });
 
     test(
-        'sincronizar NO marca como enviado mientras el servidor no lo confirme',
-        () async {
-      await AppServices.readings.saveReading(lectura());
-      final item = (await AppServices.sync.getPending()).single;
-
-      await expectLater(
-          AppServices.sync.syncItem(item), throwsA(isA<NotAvailableYet>()));
-      final sigue = (await AppServices.sync.getPending()).single;
-      expect(sigue.synced, isFalse);
-      expect(sigue.lastError, contains('servidor'));
-      expect(await AppServices.sync.lastSync(), isNull);
-
-      AppServices.isOnline.value = false;
-      await expectLater(
-          AppServices.sync.syncItem(item), throwsA(isA<OfflineException>()));
-      expect(await AppServices.sync.getPending(), hasLength(1));
-    });
-
-    test(
         'autorreportes del productor: si el historial del servidor no está, se ven los locales como pendientes',
         () async {
       await AppServices.producer.saveApplication(PhytoApplication(
@@ -202,6 +186,177 @@ void main() {
       await AppServices.readings.saveReading(lectura());
       expect(await pendientes.forOwner(yo), hasLength(1));
       expect(await pendientes.forOwner('otro'), isEmpty);
+    });
+  });
+
+  group('Sincronización del técnico (Sprint 2)', () {
+    const visiId = '11111111-1111-4111-8111-111111111111';
+    final inicio = DateTime(2026, 10, 29, 8, 55);
+
+    Reading lectura({String? visita}) => Reading(
+          id: 'lect-1',
+          trapId: '3',
+          trapLabel: 'ICA-003',
+          lotId: '10',
+          observedAt: DateTime(2026, 10, 29, 9),
+          specimens: 4,
+          condition: TrapCondition.buenEstado,
+          visitId: visita,
+        );
+
+    Future<void> encolarVisitaYLectura() async {
+      await AppServices.readings.saveFieldVisit(
+        visiId: visiId,
+        predioId: '2',
+        lotId: '10',
+        startedAt: inicio,
+        label: 'Finca El Mirador · Lote 10',
+      );
+      await AppServices.readings.saveReading(lectura(visita: visiId));
+    }
+
+    test('sube la visita antes que sus lecturas y vacía la cola', () async {
+      await encolarVisitaYLectura();
+      expect(await AppServices.sync.getPending(), hasLength(2));
+
+      final resumen = await AppServices.sync.push();
+
+      expect(resumen.confirmadas, 2);
+      expect(resumen.enRevision, 0);
+      expect(resumen.rechazadas, 0);
+      expect(resumen.diferidas, 0);
+      expect(await AppServices.sync.getPending(), isEmpty);
+      expect(backend.registrosAplicados, hasLength(2));
+      expect(backend.registrosAplicados.first, visiId);
+      expect(
+        backend.operacionesRecibidas.map((o) => o['entidad']).toList(),
+        ['visita', 'lectura_trampa'],
+      );
+      expect(await AppServices.sync.lastSync(), isNotNull);
+    });
+
+    test('la huella enviada es sha256 del JSON canónico del sobre', () async {
+      await encolarVisitaYLectura();
+      await AppServices.sync.push();
+
+      for (final op in backend.operacionesRecibidas) {
+        final contenido = <String, dynamic>{
+          'entidad': op['entidad'],
+          'accion': op['accion'],
+          'registro_id': op['registro_id'],
+          'version': op['version'],
+          'linaje': op['linaje'],
+          't_observacion': CanonicalJson.instanteCanonico(
+              DateTime.parse(op['t_observacion'] as String)),
+          'datos': op['datos'],
+        };
+        expect(CanonicalJson.sha256Hex(contenido), op['hash_contenido'],
+            reason: 'huella de ${op['entidad']}');
+      }
+    });
+
+    test('una lectura sin visita no se envía y dice por qué', () async {
+      await AppServices.readings.saveReading(lectura());
+
+      final resumen = await AppServices.sync.push();
+
+      expect(resumen.diferidas, 1);
+      expect(resumen.confirmadas, 0);
+      expect(backend.operacionesRecibidas, isEmpty);
+      final sigue = (await AppServices.sync.getPending()).single;
+      expect(sigue.lastError, contains('visita'));
+    });
+
+    test('reenviar la misma visita es idempotente (no duplica)', () async {
+      await AppServices.readings.saveFieldVisit(
+        visiId: visiId,
+        predioId: '2',
+        lotId: '10',
+        startedAt: inicio,
+        label: 'Finca El Mirador · Lote 10',
+      );
+      expect((await AppServices.sync.push()).confirmadas, 1);
+
+      // El teléfono no recibió la respuesta y reintenta el mismo contenido.
+      await AppServices.readings.saveFieldVisit(
+        visiId: visiId,
+        predioId: '2',
+        lotId: '10',
+        startedAt: inicio,
+        label: 'Finca El Mirador · Lote 10',
+      );
+      final segundo = await AppServices.sync.push();
+
+      expect(segundo.confirmadas, 1);
+      expect(backend.operacionesRecibidas, hasLength(2));
+      expect(backend.operacionesRecibidas.last['cliente_id'],
+          backend.operacionesRecibidas.first['cliente_id']);
+      expect(backend.registrosAplicados, hasLength(1));
+    });
+
+    test('una operación en «revisar» se conserva y se resuelve con motivo',
+        () async {
+      backend.porRevisar[visiId] = 'La hora del dispositivo no coincide.';
+      await AppServices.readings.saveFieldVisit(
+        visiId: visiId,
+        predioId: '2',
+        lotId: '10',
+        startedAt: inicio,
+        label: 'Finca El Mirador · Lote 10',
+      );
+
+      final resumen = await AppServices.sync.push();
+
+      expect(resumen.enRevision, 1);
+      expect(resumen.confirmadas, 0);
+      expect(await AppServices.sync.getPending(), hasLength(1));
+
+      final bandeja = await AppServices.sync.inbox();
+      expect(bandeja.single.titulo, 'Visita de campo');
+      expect(bandeja.single.enRevision, isTrue);
+      expect(bandeja.single.motivo, contains('hora'));
+
+      await expectLater(
+        AppServices.sync.resolveOperation(bandeja.single.operId,
+            confirmar: true, motivo: 'abc'),
+        throwsA(isA<DataException>()),
+      );
+
+      await AppServices.sync.resolveOperation(bandeja.single.operId,
+          confirmar: false, motivo: 'No corresponde al lote');
+      expect(backend.resoluciones.single['decision'], 'descartar');
+      expect(backend.resoluciones.single['motivo'], 'No corresponde al lote');
+      expect(await AppServices.sync.inbox(), isEmpty);
+    });
+
+    test('baja cambios y guarda el cursor para no repetirlos', () async {
+      backend.cambiosServidor.addAll([
+        {
+          'tipo': 'planificacion',
+          'id': '7',
+          'accion': 'creado',
+          't': '2026-10-29T09:00:00Z',
+        },
+        {
+          'tipo': 'notificacion',
+          'id': '8',
+          'accion': 'actualizado',
+          't': '2026-10-29T09:05:00Z',
+        },
+      ]);
+
+      final primera = await AppServices.sync.pullChanges();
+      expect(primera.cambios, hasLength(2));
+      expect(primera.hayMas, isFalse);
+      expect(primera.cursor, '2026-10-29T09:05:00Z|8');
+
+      final segunda = await AppServices.sync.pullChanges();
+      expect(segunda.cambios, isEmpty);
+      expect(
+        backend.peticiones
+            .where((p) => p.startsWith('GET /sincronizacion/cambios')),
+        hasLength(2),
+      );
     });
   });
 }

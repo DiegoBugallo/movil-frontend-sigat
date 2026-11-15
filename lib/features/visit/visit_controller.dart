@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import '../../core/utils/canonical_json.dart';
 import '../../data/app_services.dart';
 import '../../data/local/record_owner.dart';
 import '../../data/models/lot.dart';
@@ -26,6 +27,12 @@ class VisitController extends ChangeNotifier {
   String? visitId;
   DateTime? visitStartedAt;
   bool get visitInProgress => visitId != null;
+
+  /// `visi_id` de la visita de cada lote: una por lote, derivada de la jornada.
+  final Map<String, String> _visiIdPorLote = {};
+
+  /// Instante de apertura de cada lote; es el `t_observacion` de su visita y no cambia.
+  final Map<String, DateTime> _inicioPorLote = {};
 
   // ---------- Lote activo ----------
   Lot? activeLot;
@@ -97,10 +104,12 @@ class VisitController extends ChangeNotifier {
   /// "Iniciar inspección" desde el detalle del lote.
   Future<void> startLot(Lot lot) async {
     if (visitId == null) {
-      visitId = 'v-${DateTime.now().millisecondsSinceEpoch}';
+      visitId = CanonicalJson.generarUuidV4();
       visitStartedAt = DateTime.now();
       _visitProgress.clear();
       _visitSkipReasons.clear();
+      _visiIdPorLote.clear();
+      _inicioPorLote.clear();
     }
     activeLot = lot;
     activeTraps = await AppServices.lots.getTraps(lot.id);
@@ -115,6 +124,9 @@ class VisitController extends ChangeNotifier {
     trapStates.addAll(_visitProgress[lot.id] ?? const {});
     skipReasons.addAll(_visitSkipReasons[lot.id] ?? const {});
 
+    // La visita se encola ANTES que cualquier lectura: el backend exige `visi_id`.
+    await _registrarVisita(lot);
+
     if (lot.status == LotStatus.pendiente) {
       await AppServices.lots.updateLotStatus(lot.id, LotStatus.enCurso);
     }
@@ -122,8 +134,49 @@ class VisitController extends ChangeNotifier {
     await loadLots();
   }
 
+  /// `visi_id` de la visita del lote en la jornada actual (null si no hay visita).
+  String? visiIdParaLote(String lotId) {
+    final sesion = visitId;
+    if (sesion == null) return null;
+    return _visiIdPorLote.putIfAbsent(lotId,
+        () => CanonicalJson.uuidDesdeSemilla('visita:$sesion:lote:$lotId'));
+  }
+
+  Lot? _loteDe(String lotId) {
+    for (final lote in assignedLots) {
+      if (lote.id == lotId) return lote;
+    }
+    return activeLot?.id == lotId ? activeLot : null;
+  }
+
+  /// Encola la visita del lote. [porDefecto] fija el inicio solo la primera vez,
+  /// para que el hash no cambie entre reintentos.
+  Future<void> _registrarVisita(Lot lot, {DateTime? porDefecto}) async {
+    final visiId = visiIdParaLote(lot.id);
+    if (visiId == null) return;
+    final inicio =
+        _inicioPorLote.putIfAbsent(lot.id, () => porDefecto ?? DateTime.now());
+    await AppServices.readings.saveFieldVisit(
+      visiId: visiId,
+      predioId: lot.predioId,
+      lotId: lot.id,
+      startedAt: inicio,
+      label:
+          lot.predioName.isEmpty ? lot.name : '${lot.predioName} · ${lot.name}',
+    );
+  }
+
   Future<void> saveReading(Reading reading) async {
-    await AppServices.readings.saveReading(reading);
+    // La visita siempre viaja antes que sus lecturas.
+    final lote = _loteDe(reading.lotId);
+    if (lote != null) {
+      await _registrarVisita(lote, porDefecto: reading.observedAt);
+    }
+    final visiId = visiIdParaLote(reading.lotId);
+    final aGuardar = reading.visitId == null && visiId != null
+        ? reading.copyWith(visitId: visiId)
+        : reading;
+    await AppServices.readings.saveReading(aGuardar);
     trapStates[reading.trapId] = TrapVisitState.registrada;
     skipReasons.remove(reading.trapId);
     _visitProgress.putIfAbsent(reading.lotId, () => {})[reading.trapId] =
@@ -134,8 +187,15 @@ class VisitController extends ChangeNotifier {
 
   /// Trampa que no se pudo registrar: queda justificada con el motivo.
   Future<void> justifyTrap(Trap trap, String reason) async {
-    await AppServices.readings
-        .justifyTrap(trapId: trap.id, lotId: trap.lotId, reason: reason);
+    final lote = _loteDe(trap.lotId);
+    if (lote != null) {
+      await _registrarVisita(lote);
+    }
+    await AppServices.readings.justifyTrap(
+        trapId: trap.id,
+        lotId: trap.lotId,
+        reason: reason,
+        visitId: visiIdParaLote(trap.lotId));
     trapStates[trap.id] = TrapVisitState.justificada;
     skipReasons[trap.id] = reason;
     _visitProgress.putIfAbsent(trap.lotId, () => {})[trap.id] =
@@ -171,6 +231,8 @@ class VisitController extends ChangeNotifier {
     visitStartedAt = null;
     _visitProgress.clear();
     _visitSkipReasons.clear();
+    _visiIdPorLote.clear();
+    _inicioPorLote.clear();
     notifyListeners();
   }
 
@@ -191,6 +253,8 @@ class VisitController extends ChangeNotifier {
     focusedTrap = null;
     _visitProgress.clear();
     _visitSkipReasons.clear();
+    _visiIdPorLote.clear();
+    _inicioPorLote.clear();
     notifyListeners();
   }
 

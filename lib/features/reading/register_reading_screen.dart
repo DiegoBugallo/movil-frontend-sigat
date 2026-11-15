@@ -124,8 +124,9 @@ class _RegisterReadingScreenState extends State<RegisterReadingScreen> {
         trapLabel: widget.trap.label,
         lotId: widget.trap.lotId,
         observedAt: observedAt,
-        specimens: int.parse(_specimensCtrl.text),
+        specimens: _condition.wasRead ? int.parse(_specimensCtrl.text) : 0,
         condition: _condition,
+        visitId: visit.visiIdParaLote(widget.trap.lotId),
         bodyChangeDate: _bodyChange,
         attractantChangeDate: _attractantChange,
         observations:
@@ -199,14 +200,16 @@ class _RegisterReadingScreenState extends State<RegisterReadingScreen> {
                 AppTextField(
                   label: 'Número de especímenes',
                   controller: _specimensCtrl,
-                  hint: '0',
+                  hint: !_condition.wasRead ? 'No aplica (no leída)' : '0',
                   keyboardType: TextInputType.number,
-                  enabled: !_saved,
+                  enabled: !_saved && _condition.wasRead,
                   validator: (v) {
+                    if (!_condition.wasRead) return null;
                     if (v == null || v.isEmpty) {
                       return 'Ingresa el número de especímenes (0 si no hay)';
                     }
                     if (int.tryParse(v) == null) return 'Solo números enteros';
+                    if (int.parse(v) < 0) return 'No puede ser negativo';
                     return null;
                   },
                 ),
@@ -234,11 +237,23 @@ class _RegisterReadingScreenState extends State<RegisterReadingScreen> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 AppTextField(
-                  label: 'Observaciones',
+                  label: !_condition.wasRead
+                      ? 'Justificación de no lectura *'
+                      : 'Observaciones',
                   controller: _obsCtrl,
-                  hint: 'Escribe una observación (opcional)',
+                  hint: !_condition.wasRead
+                      ? 'Explica por qué no se pudo leer (obligatorio)'
+                      : 'Escribe una observación (opcional)',
                   maxLines: 2,
                   enabled: !_saved,
+                  validator: (v) {
+                    // Regla ICA: justificación obligatoria si la trampa no se leyó.
+                    if (!_condition.wasRead &&
+                        (v == null || v.trim().isEmpty)) {
+                      return 'Debes ingresar el motivo por el cual no se leyó la trampa';
+                    }
+                    return null;
+                  },
                 ),
                 if (_evidence.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.lg),

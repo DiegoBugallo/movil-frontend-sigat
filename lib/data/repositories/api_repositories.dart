@@ -1,4 +1,8 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../core/utils/canonical_json.dart';
 import '../api/api_client.dart';
+import '../api/secure_store.dart';
 import '../app_services.dart';
 import '../local/pending_store.dart';
 import '../local/record_owner.dart';
@@ -11,8 +15,10 @@ import '../models/photo_file.dart';
 import '../models/planning.dart';
 import '../models/producer.dart';
 import '../models/reading.dart';
+import '../models/sync_models.dart';
 import '../models/trap.dart';
 import '../models/user_profile.dart';
+import '../models/user_session.dart';
 import '../models/visit.dart';
 import 'agronomist_repository.dart';
 import 'field_repositories.dart';
@@ -236,7 +242,8 @@ class ApiReadingsRepository implements ReadingsRepository {
   Future<void> justifyTrap(
       {required String trapId,
       required String lotId,
-      required String reason}) async {
+      required String reason,
+      String? visitId}) async {
     final ahora = DateTime.now();
     await _pendientes.put(PendingRecord(
       id: 'just-$lotId-$trapId',
@@ -247,8 +254,39 @@ class ApiReadingsRepository implements ReadingsRepository {
       payload: {
         'trap_id': trapId,
         'lot_id': lotId,
+        'visit_id': visitId,
         'reason': reason,
         'observed_at': ahora.toIso8601String()
+      },
+      lotId: lotId,
+    ));
+  }
+
+  /// Guarda (o reemplaza) la operación `visita` del lote. [startedAt] se fija
+  /// al abrir el lote, así que reenviarla produce el mismo hash y es idempotente.
+  @override
+  Future<void> saveFieldVisit({
+    required String visiId,
+    required String predioId,
+    required String lotId,
+    required DateTime startedAt,
+    required String label,
+  }) async {
+    final dueno = RecordOwner.requerido();
+    final instante = startedAt.toUtc().toIso8601String();
+    await _pendientes.put(PendingRecord(
+      id: visiId,
+      ownerId: dueno,
+      kind: PendingKind.visitaCampo,
+      label: label,
+      observedAt: startedAt,
+      payload: {
+        'visi_id': visiId,
+        'pred_id': int.parse(predioId),
+        'lote_ids': [int.parse(lotId)],
+        'ruta_id': null,
+        'inicio': instante,
+        'fin': instante,
       },
       lotId: lotId,
     ));
@@ -263,46 +301,330 @@ class ApiReadingsRepository implements ReadingsRepository {
       ];
 }
 
+/// Sube y baja la sincronización del Sprint 2: visitas antes que lecturas, en
+/// lotes de 200. La idempotencia y la huella (RFC 8785) las valida el servidor.
 class ApiSyncRepository implements SyncRepository {
-  ApiSyncRepository(this._pendientes);
+  ApiSyncRepository(this._api, this._pendientes);
+
+  final ApiClient _api;
   final PendingStore _pendientes;
+
+  /// Mismo `SecureStore` que usa el cliente HTTP: login y sync comparten `disp_id`.
+  SecureStore get _secure => _api.store;
+
+  static const _maxLote = 200;
+  static const _claveUltima = 'sigat.sync.ultima';
+  static const _claveCursor = 'sigat.sync.cursor';
+
+  static bool _esOperacion(PendingKind kind) =>
+      kind == PendingKind.visitaCampo ||
+      kind == PendingKind.lectura ||
+      kind == PendingKind.justificacion;
 
   @override
   Future<List<SyncItem>> getPending() async => [
         for (final p in await _pendientes.forOwner(_yo))
-          SyncItem(
-            id: p.id,
-            ownerId: p.ownerId,
-            label: '${p.kind.label} · ${p.label}',
-            observedAt: p.observedAt,
-            lastError: p.lastError,
-          ),
+          if (_esOperacion(p.kind))
+            SyncItem(
+              id: p.id,
+              ownerId: p.ownerId,
+              label: '${p.kind.label} · ${p.label}',
+              observedAt: p.observedAt,
+              lastError: p.lastError,
+            ),
       ];
 
-  /// FALTA EN EL BACKEND: `POST /sincronizacion/lotes` (responde 501). Para conectarlo, cada
-  /// pendiente se envía como `OperacionSync` (entidad [PendingKind.entity], `cliente_id`,
-  /// `registro_id`, `hash_contenido` SHA-256 del JSON canónico RFC 8785, `linaje`) y se quita
-  /// de la cola SOLO con un resultado `alta_*`, `correccion` o `idempotente_repetida`.
-  /// Hasta entonces el registro se conserva y se informa el motivo; nunca se marca enviado.
   @override
-  Future<void> syncItem(SyncItem item) async {
-    final motivo = AppServices.isOnline.value
-        ? 'El servidor todavía no recibe sincronizaciones.'
-        : 'Sin conexión.';
-    final p = (await _pendientes.forOwner(_yo))
-        .where((x) => x.id == item.id)
-        .firstOrNull;
-    if (p != null) await _pendientes.put(p.withError(motivo));
-    if (!AppServices.isOnline.value) {
-      throw OfflineException('$motivo Sigue guardado en este teléfono.');
-    }
-    throw NotAvailableYet('$motivo Sigue guardado en este teléfono.');
+  Future<DateTime?> lastSync() async {
+    final prefs = await SharedPreferences.getInstance();
+    final texto = prefs.getString(_claveUltima);
+    return texto == null ? null : DateTime.tryParse(texto);
   }
 
-  /// Ninguna sincronización ha sido confirmada por el servidor todavía.
   @override
-  Future<DateTime?> lastSync() async => null;
+  Future<SyncPushSummary> push() async {
+    if (!AppServices.isOnline.value) {
+      throw const OfflineException(
+          'Sin conexión. Los datos siguen guardados en este teléfono.');
+    }
+
+    final todos = await _pendientes.forOwner(_yo);
+    final dispId = await _dispositivo();
+
+    // Orden del contrato: la visita antes que sus lecturas.
+    final visitas = todos
+        .where((p) => p.kind == PendingKind.visitaCampo)
+        .toList()
+      ..sort((a, b) => a.observedAt.compareTo(b.observedAt));
+    final lecturas = todos
+        .where((p) =>
+            p.kind == PendingKind.lectura ||
+            p.kind == PendingKind.justificacion)
+        .toList()
+      ..sort((a, b) => a.observedAt.compareTo(b.observedAt));
+
+    var diferidas = 0;
+    final enviables = <PendingRecord>[];
+    for (final lectura in lecturas) {
+      if (_visiIdDe(lectura) == null) {
+        // Sin `visi_id` no hay forma de que el backend la acepte: se conserva y se avisa.
+        await _pendientes.put(lectura.withError(
+            'La lectura no tiene una visita asociada. Abre el lote de nuevo y vuelve a guardarla.'));
+        diferidas++;
+      } else {
+        enviables.add(lectura);
+      }
+    }
+
+    final ordenados = <PendingRecord>[...visitas, ...enviables];
+    var confirmadas = 0;
+    var enRevision = 0;
+    var rechazadas = 0;
+    for (var i = 0; i < ordenados.length; i += _maxLote) {
+      final fin =
+          (i + _maxLote < ordenados.length) ? i + _maxLote : ordenados.length;
+      final resumen = await _enviarLote(ordenados.sublist(i, fin), dispId);
+      confirmadas += resumen.$1;
+      enRevision += resumen.$2;
+      rechazadas += resumen.$3;
+    }
+
+    await _guardarUltima(DateTime.now());
+    return SyncPushSummary(
+      confirmadas: confirmadas,
+      enRevision: enRevision,
+      rechazadas: rechazadas,
+      diferidas: diferidas,
+    );
+  }
+
+  @override
+  Future<List<ServerOperation>> inbox() =>
+      _llamar('La bandeja de revisión', () async {
+        final filas = await _api.getList('/sincronizacion/operaciones');
+        return [for (final f in filas) ServerOperation.fromJson(f)];
+      });
+
+  @override
+  Future<void> resolveOperation(
+    int operId, {
+    required bool confirmar,
+    required String motivo,
+  }) async {
+    final texto = motivo.trim();
+    if (texto.length < 5) {
+      throw const DataException('Escribe un motivo de al menos 5 caracteres.');
+    }
+    await _llamar('La resolución de la operación', () async {
+      await _api.post(
+        '/sincronizacion/operaciones/$operId/resolucion',
+        body: {
+          'decision': confirmar ? 'confirmar' : 'descartar',
+          'motivo': texto,
+        },
+      );
+    });
+  }
+
+  @override
+  Future<SyncChanges> pullChanges() async {
+    final prefs = await SharedPreferences.getInstance();
+    var cursor = prefs.getString(_claveCursor);
+    final acumulados = <ServerChange>[];
+    DateTime? servidor;
+    var hayMas = false;
+
+    // Se avanza el cursor hasta agotar las páginas (máximo 20 para no bloquear la UI).
+    for (var pagina = 0; pagina < 20; pagina++) {
+      final respuesta = await _llamar('La bajada de cambios', () async {
+        return await _api.get('/sincronizacion/cambios', query: {
+          'desde': cursor,
+          'limite': 100,
+        });
+      });
+      if (respuesta == null) break;
+      final cambios = SyncChanges.fromJson(respuesta);
+      acumulados.addAll(cambios.cambios);
+      servidor = cambios.servidorUtc;
+      hayMas = cambios.hayMas;
+      if (cambios.cursor.isNotEmpty) {
+        cursor = cambios.cursor;
+        await prefs.setString(_claveCursor, cambios.cursor);
+      }
+      if (!hayMas) break;
+    }
+
+    return SyncChanges(
+      cursor: cursor ?? '',
+      servidorUtc: servidor,
+      cambios: acumulados,
+      hayMas: hayMas,
+    );
+  }
+
+  Future<(int, int, int)> _enviarLote(
+      List<PendingRecord> lote, String dispId) async {
+    final ahora = DateTime.now();
+    final operaciones = <Map<String, dynamic>>[];
+    final porCliente = <String, PendingRecord>{};
+
+    for (final registro in lote) {
+      final operacion = _operacion(registro, dispId, ahora);
+      porCliente[operacion['cliente_id'] as String] = registro;
+      operaciones.add(operacion);
+    }
+
+    final respuesta = await _llamar('La sincronización', () async {
+      return await _api.post('/sincronizacion/lotes', body: {
+        'disp_id': dispId,
+        'enviado_en': ahora.toUtc().toIso8601String(),
+        'operaciones': operaciones,
+      });
+    });
+    if (respuesta == null) {
+      throw const DataException('El servidor devolvió una respuesta vacía.');
+    }
+
+    var confirmadas = 0;
+    var enRevision = 0;
+    var rechazadas = 0;
+    for (final fila in (respuesta['resultados'] as List? ?? const [])) {
+      if (fila is! Map) continue;
+      final clienteId = fila['cliente_id']?.toString() ?? '';
+      final registro = porCliente[clienteId];
+      if (registro == null) continue;
+      final resultado = fila['resultado']?.toString() ?? '';
+      final motivo = fila['motivo']?.toString() ??
+          fila['codigo']?.toString() ??
+          'El servidor no aplicó la operación.';
+
+      if (resultado.startsWith('alta_') ||
+          resultado == 'correccion' ||
+          resultado == 'idempotente_repetida') {
+        await _pendientes.remove(registro.id);
+        confirmadas++;
+      } else {
+        await _pendientes.put(registro.withError(motivo));
+        if (resultado == 'revisar') {
+          enRevision++;
+        } else {
+          rechazadas++;
+        }
+      }
+    }
+    return (confirmadas, enRevision, rechazadas);
+  }
+
+  Map<String, dynamic> _operacion(
+      PendingRecord registro, String dispId, DateTime ahora) {
+    final registroId = _registroIdDe(registro);
+    final clienteId =
+        CanonicalJson.uuidDesdeSemilla('cliente:$dispId:$registroId');
+    final linaje = registro.kind == PendingKind.visitaCampo ? null : _linaje;
+    final tObservacion = CanonicalJson.instanteCanonico(registro.observedAt);
+    final datos = _datosDe(registro);
+
+    // Mismo contenido canónico que `huella.contenido_canonico` del backend.
+    final contenido = <String, dynamic>{
+      'entidad': registro.kind.entity,
+      'accion': 'crear',
+      'registro_id': registroId,
+      'version': 1,
+      'linaje': linaje,
+      't_observacion': tObservacion,
+      'datos': datos,
+    };
+    // La captura nunca puede ser anterior a la observación (invariante del validador).
+    final captura =
+        ahora.isBefore(registro.observedAt) ? registro.observedAt : ahora;
+
+    return {
+      'cliente_id': clienteId,
+      'entidad': registro.kind.entity,
+      'accion': 'crear',
+      'registro_id': registroId,
+      'version': 1,
+      'linaje': linaje,
+      't_observacion': tObservacion,
+      't_captura': captura.toUtc().toIso8601String(),
+      'deriva_reloj_seg': null,
+      'confirma_deriva_reloj': false,
+      'hash_contenido': CanonicalJson.sha256Hex(contenido),
+      'datos': datos,
+    };
+  }
+
+  String _registroIdDe(PendingRecord registro) {
+    if (registro.kind == PendingKind.visitaCampo) return registro.id;
+    // Las lecturas se guardan con ids legibles (`r-…`, `just-…`); el servidor exige UUID.
+    return CanonicalJson.uuidDesdeSemilla(
+        'registro:${registro.ownerId}:${registro.kind.name}:${registro.id}');
+  }
+
+  /// Linaje que exige el validador: TECNICO → `inspeccion_oficial`,
+  /// PRODUCTOR → `autorreporte`.
+  String get _linaje => AppServices.session.value?.role == UserRole.productor
+      ? 'autorreporte'
+      : 'inspeccion_oficial';
+
+  String? _visiIdDe(PendingRecord registro) {
+    if (registro.kind == PendingKind.visitaCampo) return registro.id;
+    if (registro.kind == PendingKind.lectura) {
+      return Reading.fromJson(registro.payload).visitId;
+    }
+    if (registro.kind == PendingKind.justificacion) {
+      return registro.payload['visit_id'] as String?;
+    }
+    return null;
+  }
+
+  Map<String, dynamic> _datosDe(PendingRecord registro) {
+    switch (registro.kind) {
+      case PendingKind.visitaCampo:
+        final p = registro.payload;
+        return {
+          'pred_id': p['pred_id'],
+          'lote_ids': p['lote_ids'],
+          'ruta_id': p['ruta_id'],
+          'visi_t_inicio_obs': p['inicio'],
+          'visi_t_fin_obs': p['fin'],
+        };
+      case PendingKind.lectura:
+        return Reading.fromJson(registro.payload).toSyncDatos();
+      case PendingKind.justificacion:
+        final p = registro.payload;
+        return {
+          'visi_id': p['visit_id'],
+          'tram_id': int.parse(p['trap_id'].toString()),
+          'lect_leida': false,
+          'lect_especimenes': null,
+          'lect_justificacion': p['reason'] ?? 'Trampa no leída',
+          // No encontrada ⇒ la BD solo admite 1 (Normal) o 2 (Dañada).
+          'cond_id': 2,
+          'lect_observaciones': p['reason'],
+        };
+      default:
+        throw const DataException(
+            'Este tipo de registro todavía no se sincroniza desde el móvil.');
+    }
+  }
+
+  Future<String> _dispositivo() async {
+    final guardado = await _secure.deviceId;
+    if (guardado != null && guardado.isNotEmpty) return guardado;
+    // Si la sesión no lo guardó (arranque sin login previo), se crea una vez y se conserva.
+    final nuevo = CanonicalJson.generarUuidV4();
+    await _secure.saveDeviceId(nuevo);
+    return nuevo;
+  }
+
+  Future<void> _guardarUltima(DateTime instante) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_claveUltima, instante.toUtc().toIso8601String());
+  }
 }
+
+/* ============================================================== visitas e historial */
 
 class ApiHistoryRepository implements HistoryRepository {
   ApiHistoryRepository(this._api, this._pendientes);

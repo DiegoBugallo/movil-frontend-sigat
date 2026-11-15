@@ -157,6 +157,7 @@ class Reading {
     required this.observedAt,
     required this.specimens,
     required this.condition,
+    this.visitId,
     this.bodyChangeDate,
     this.attractantChangeDate,
     this.observations,
@@ -171,33 +172,47 @@ class Reading {
   final DateTime observedAt;
   final int specimens;
   final TrapCondition condition;
+
+  /// `visi_id` de la visita a la que pertenece (lo arma `VisitController`).
+  final String? visitId;
   final DateTime? bodyChangeDate;
   final DateTime? attractantChangeDate;
   final String? observations;
   final List<Evidence> evidence;
   final bool synced;
 
-  /// Carga útil para `POST /sync/batch` (entidad `lectura_trampa`), con los NOMBRES DE
-  /// COLUMNA de la BD. El backend completa `usua_id`, `disp_id`, `oper_id` y
-  /// `lect_t_sincronizacion`; el teléfono solo aporta lo que observó.
-  /// [visitId] es la visita a la que pertenece (`visi_id`).
-  Map<String, dynamic> toSyncPayload({required String visitId}) => {
-        'lect_registro_id': id,
-        'lect_version': 1,
+  Reading copyWith({String? visitId}) => Reading(
+        id: id,
+        trapId: trapId,
+        trapLabel: trapLabel,
+        lotId: lotId,
+        observedAt: observedAt,
+        specimens: specimens,
+        condition: condition,
+        visitId: visitId ?? this.visitId,
+        bodyChangeDate: bodyChangeDate,
+        attractantChangeDate: attractantChangeDate,
+        observations: observations,
+        evidence: evidence,
+        synced: synced,
+      );
+
+  /// Datos para `POST /sincronizacion/lotes` (entidad `lectura_trampa`).
+  /// Solo columnas de dominio; el resto y las marcas de tiempo las pone el servidor.
+  Map<String, dynamic> toSyncDatos() => {
         'visi_id': visitId,
-        'tram_id': trapId,
+        'tram_id': int.parse(trapId),
         'lect_leida': condition.wasRead,
         'lect_especimenes': condition.wasRead ? specimens : null,
-        'lect_justificacion': condition.wasRead ? null : (observations ?? ''),
+        'lect_justificacion':
+            condition.wasRead ? null : (observations ?? 'Trampa no leída'),
         'cond_id': condition.dbCondId,
-        'lect_fecha_cambio_cuerpo':
-            bodyChangeDate?.toIso8601String().substring(0, 10),
-        'lect_fecha_cambio_atrayente':
-            attractantChangeDate?.toIso8601String().substring(0, 10),
+        'lect_fecha_cambio_cuerpo': _soloFecha(bodyChangeDate),
+        'lect_fecha_cambio_atrayente': _soloFecha(attractantChangeDate),
         'lect_observaciones': observations,
-        'lect_t_observacion': observedAt.toIso8601String(),
       };
 
+  /// Serialización local con nombres de columna de la BD.
   Map<String, dynamic> toJson() => {
         'id': id,
         'trap_id': trapId,
@@ -206,14 +221,14 @@ class Reading {
         'observed_at': observedAt.toIso8601String(),
         'specimens': specimens,
         'condition': condition.name,
+        'visit_id': visitId,
         'body_change_date': bodyChangeDate?.toIso8601String(),
         'attractant_change_date': attractantChangeDate?.toIso8601String(),
         'observations': observations,
         'evidence': evidence.map((e) => e.toJson()).toList(),
       };
 
-  /// Lectura guardada en el teléfono (cola de pendientes). [synced] siempre es false:
-  /// solo el servidor puede confirmar que la recibió.
+  /// Lectura guardada en el teléfono; [synced] solo lo pone el servidor.
   factory Reading.fromJson(Map<String, dynamic> j) {
     DateTime? fecha(dynamic v) =>
         v == null ? null : DateTime.parse(v as String);
@@ -227,6 +242,7 @@ class Reading {
       condition: TrapCondition.values.firstWhere(
           (c) => c.name == j['condition'],
           orElse: () => TrapCondition.buenEstado),
+      visitId: j['visit_id'] as String?,
       bodyChangeDate: fecha(j['body_change_date']),
       attractantChangeDate: fecha(j['attractant_change_date']),
       observations: j['observations'] as String?,
@@ -237,3 +253,5 @@ class Reading {
     );
   }
 }
+
+String? _soloFecha(DateTime? v) => v?.toIso8601String().substring(0, 10);
