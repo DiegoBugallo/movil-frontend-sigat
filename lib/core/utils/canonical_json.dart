@@ -6,7 +6,7 @@ import 'package:crypto/crypto.dart';
 /// JSON canónico (RFC 8785) y utilidades de identidad.
 ///
 /// Debe producir el mismo texto que `sigat_api.modules.sincronizacion.huella`;
-/// los vectores de `test/vectores_huella.json` lo comprueban.
+/// los vectores de `test/canonical_json_test.dart` lo comprueban.
 class CanonicalJson {
   CanonicalJson._();
 
