@@ -38,8 +38,6 @@ class BackendDePrueba {
   /// para probar la lógica del cliente cuando esas rutas existan. Clave = «GET /ruta».
   final respuestasExtra = <String, Object?>{};
 
-  /* ------------------------------------------------------------------ sincronización */
-
   final operacionesRecibidas = <Map<String, dynamic>>[];
 
   final porRevisar = <String, String>{};
@@ -178,7 +176,6 @@ class BackendDePrueba {
         }
         return _json(204, null);
 
-      /* ---------------------------------------------------------- sincronización (Sprint 2) */
       case ('POST', '/sincronizacion/lotes'):
         return _lotes(req);
       case ('GET', '/sincronizacion/operaciones'):
@@ -202,8 +199,6 @@ class BackendDePrueba {
 
   List<Map<String, dynamic>> _de(_Cuenta c) =>
       _avisos.where((a) => a['usua_id'] == c.id).toList();
-
-  /* ================================================================ sincronización */
 
   http.Response _lotes(http.Request req) {
     final b = jsonDecode(req.body) as Map<String, dynamic>;

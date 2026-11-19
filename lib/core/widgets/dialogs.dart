@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
-import 'app_text_field.dart';
 
 /// Diálogo de confirmación estándar. Devuelve true si el usuario confirma.
 /// `destructive: true` pinta la acción en rojo (cerrar sesión, descartar).
@@ -34,81 +33,6 @@ Future<bool> showAppConfirmDialog(
     ),
   );
   return ok ?? false;
-}
-
-Future<String?> showAppReasonDialog(
-  BuildContext context, {
-  required String title,
-  required String message,
-  String label = 'Motivo',
-  String hint = 'Explica brevemente la decisión',
-  String confirmLabel = 'Enviar',
-  bool destructive = false,
-  int minimo = 5,
-}) async {
-  final formKey = GlobalKey<FormState>();
-  final controller = TextEditingController();
-  String? error;
-  try {
-    return await showDialog<String>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setState) => AlertDialog(
-          title: Text(title, style: AppText.h3),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(message, style: AppText.body),
-                const SizedBox(height: 12),
-                AppTextField(
-                  label: label,
-                  controller: controller,
-                  hint: hint,
-                  maxLines: 3,
-                  hasError: error != null,
-                  helper: error,
-                  onChanged: (_) {
-                    if (error != null) setState(() => error = null);
-                  },
-                  validator: (v) {
-                    final texto = (v ?? '').trim();
-                    if (texto.length < minimo) {
-                      return 'Escribe al menos $minimo caracteres.';
-                    }
-                    return null;
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancelar')),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                  backgroundColor:
-                      destructive ? AppColors.error : AppColors.primaryDark),
-              onPressed: () {
-                if (formKey.currentState?.validate() != true) {
-                  setState(
-                      () => error = 'Escribe al menos $minimo caracteres.');
-                  return;
-                }
-                Navigator.pop(ctx, controller.text.trim());
-              },
-              child: Text(confirmLabel),
-            ),
-          ],
-        ),
-      ),
-    );
-  } finally {
-    controller.dispose();
-  }
 }
 
 /// Protege un formulario a medio llenar.

@@ -552,8 +552,6 @@ class ApiSyncRepository implements SyncRepository {
   }
 }
 
-/* ============================================================== visitas e historial */
-
 class ApiHistoryRepository implements HistoryRepository {
   ApiHistoryRepository(this._api, this._pendientes);
   final ApiClient _api;

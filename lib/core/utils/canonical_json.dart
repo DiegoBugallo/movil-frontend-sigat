@@ -26,7 +26,7 @@ class CanonicalJson {
     final minuto = u.minute.toString().padLeft(2, '0');
     final segundo = u.second.toString().padLeft(2, '0');
     final milisegundo = u.millisecond.toString().padLeft(3, '0');
-    return '$anio-$mes-${dia}T$hora:$minuto:$segundo.$milisegundo' 'Z';
+    return '$anio-$mes-$dia' 'T$hora:$minuto:$segundo.${milisegundo}Z';
   }
 
   static String generarUuidV4() {
@@ -48,9 +48,7 @@ class CanonicalJson {
   }
 
   static String _formatearUuid(List<int> bytes) {
-    final hex = [
-      for (final b in bytes) b.toRadixString(16).padLeft(2, '0'),
-    ].join();
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-'
         '${hex.substring(12, 16)}-${hex.substring(16, 20)}-'
         '${hex.substring(20)}';
@@ -73,14 +71,7 @@ class CanonicalJson {
       }
       salida.write(']');
     } else if (valor is Map) {
-      final claves = [
-        for (final clave in valor.keys)
-          if (clave is String)
-            clave
-          else
-            throw ArgumentError.value(clave, 'clave',
-                'Las claves del JSON canónico deben ser texto.'),
-      ]..sort();
+      final claves = valor.keys.map(_claveTexto).toList()..sort();
       salida.write('{');
       for (var i = 0; i < claves.length; i++) {
         if (i > 0) salida.write(',');
@@ -93,6 +84,12 @@ class CanonicalJson {
       throw ArgumentError.value(
           valor, 'valor', 'Tipo no serializable en JSON canónico.');
     }
+  }
+
+  static String _claveTexto(Object? clave) {
+    if (clave is String) return clave;
+    throw ArgumentError.value(
+        clave, 'clave', 'Las claves del JSON canónico deben ser texto.');
   }
 
   static String _numero(num valor) {
