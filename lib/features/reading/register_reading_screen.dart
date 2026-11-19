@@ -247,7 +247,6 @@ class _RegisterReadingScreenState extends State<RegisterReadingScreen> {
                   maxLines: 2,
                   enabled: !_saved,
                   validator: (v) {
-                    // Regla ICA: justificación obligatoria si la trampa no se leyó.
                     if (!_condition.wasRead &&
                         (v == null || v.trim().isEmpty)) {
                       return 'Debes ingresar el motivo por el cual no se leyó la trampa';

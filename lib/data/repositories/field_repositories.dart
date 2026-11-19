@@ -52,8 +52,6 @@ abstract class ReadingsRepository {
 
   Future<List<Reading>> readingsForLot(String lotId);
 
-  /// Guarda la operación `visita` del lote en la cola local. Debe existir antes
-  /// que sus lecturas; su id y contenido son fijos, así que reenviarla es idempotente.
   Future<void> saveFieldVisit({
     required String visiId,
     required String predioId,
@@ -73,17 +71,12 @@ abstract class MapRepository {
 }
 
 abstract class SyncRepository {
-  /// Registros de la cola local que todavía no confirmó el servidor.
   Future<List<SyncItem>> getPending();
 
-  /// Hora de la última sincronización confirmada por el servidor (si la hay).
   Future<DateTime?> lastSync();
 
-  /// Sube todo lo pendiente en lotes de hasta 200 operaciones, con las visitas
-  /// primero. La cola local queda actualizada con el resultado de cada operación.
   Future<SyncPushSummary> push();
 
-  /// Operaciones del usuario en «revisar» o «rechazada» (bandeja del móvil).
   Future<List<ServerOperation>> inbox();
 }
 

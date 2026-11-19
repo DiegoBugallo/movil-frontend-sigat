@@ -8,55 +8,37 @@ import '../../data/models/reading.dart';
 import '../../data/models/trap.dart';
 import '../../data/models/visit.dart';
 
-/// Estado y reglas de la visita de campo (compartido por todas las pantallas).
-///
-/// Reglas del negocio:
-///  * Un lote se puede finalizar cuando TODAS sus trampas están registradas
-///    o justificadas con una observación (motivo por el que no se pudo).
-///  * La visita se puede finalizar cuando TODOS los lotes asignados están finalizados.
 class VisitController extends ChangeNotifier {
   VisitController._();
   static final instance = VisitController._();
 
-  // ---------- Lotes asignados ----------
   List<Lot> assignedLots = [];
   bool loadingLots = false;
   String? lotsError;
 
-  // ---------- Visita ----------
   String? visitId;
   DateTime? visitStartedAt;
   bool get visitInProgress => visitId != null;
 
-  /// `visi_id` de la visita de cada lote: una por lote, derivada de la jornada.
   final Map<String, String> _visiIdPorLote = {};
 
-  /// Instante de apertura de cada lote; es el `t_observacion` de su visita y no cambia.
   final Map<String, DateTime> _inicioPorLote = {};
 
-  // ---------- Lote activo ----------
   Lot? activeLot;
   List<Trap> activeTraps = [];
   final Map<String, TrapVisitState> trapStates = {};
   final Map<String, String> skipReasons = {};
 
-  /// Trampa a resaltar cuando se abre el mapa ("Ver en el mapa").
   Trap? focusedTrap;
 
-  /// Avance de la visita EN CURSO, por lote: trapId → estado (y motivo si se
-  /// justificó). Solo cuenta lo registrado o justificado en esta visita.
-  /// Las lecturas de visitas anteriores (las que revisa el agrónomo) NO marcan
-  /// trampas como hechas: cada visita empieza con todas las trampas pendientes.
   final Map<String, Map<String, TrapVisitState>> _visitProgress = {};
   final Map<String, Map<String, String>> _visitSkipReasons = {};
 
-  /// Lecturas registradas en la visita en curso (resumen de "Finalizar visita").
   int get readingsThisVisit => _visitProgress.values
       .expand((m) => m.values)
       .where((s) => s == TrapVisitState.registrada)
       .length;
 
-  // ---------- Derivados ----------
   int get registeredCount =>
       trapStates.values.where((s) => s == TrapVisitState.registrada).length;
   int get handledCount =>
@@ -73,7 +55,6 @@ class VisitController extends ChangeNotifier {
   TrapVisitState stateOf(Trap t) =>
       trapStates[t.id] ?? TrapVisitState.pendiente;
 
-  /// Recorrido en orden: la siguiente trampa a visitar es la primera pendiente.
   Trap? get nextTrap {
     for (final t in activeTraps) {
       if (stateOf(t) == TrapVisitState.pendiente) return t;
@@ -81,11 +62,9 @@ class VisitController extends ChangeNotifier {
     return null;
   }
 
-  /// Una trampa pendiente que NO es la siguiente queda bloqueada.
   bool isLocked(Trap t) =>
       stateOf(t) == TrapVisitState.pendiente && nextTrap?.id != t.id;
 
-  // ---------- Acciones ----------
   Future<void> loadLots() async {
     loadingLots = true;
     lotsError = null;
@@ -101,7 +80,6 @@ class VisitController extends ChangeNotifier {
     }
   }
 
-  /// "Iniciar inspección" desde el detalle del lote.
   Future<void> startLot(Lot lot) async {
     if (visitId == null) {
       visitId = CanonicalJson.generarUuidV4();
@@ -119,12 +97,9 @@ class VisitController extends ChangeNotifier {
           activeTraps.map((t) => MapEntry(t.id, TrapVisitState.pendiente)));
     skipReasons.clear();
 
-    // Si este lote ya se trabajó en ESTA visita (se salió y volvió), se respeta
-    // lo hecho. Lecturas de visitas anteriores no cuentan.
     trapStates.addAll(_visitProgress[lot.id] ?? const {});
     skipReasons.addAll(_visitSkipReasons[lot.id] ?? const {});
 
-    // La visita se encola ANTES que cualquier lectura: el backend exige `visi_id`.
     await _registrarVisita(lot);
 
     if (lot.status == LotStatus.pendiente) {
@@ -134,7 +109,6 @@ class VisitController extends ChangeNotifier {
     await loadLots();
   }
 
-  /// `visi_id` de la visita del lote en la jornada actual (null si no hay visita).
   String? visiIdParaLote(String lotId) {
     final sesion = visitId;
     if (sesion == null) return null;
@@ -149,8 +123,6 @@ class VisitController extends ChangeNotifier {
     return activeLot?.id == lotId ? activeLot : null;
   }
 
-  /// Encola la visita del lote. [porDefecto] fija el inicio solo la primera vez,
-  /// para que el hash no cambie entre reintentos.
   Future<void> _registrarVisita(Lot lot, {DateTime? porDefecto}) async {
     final visiId = visiIdParaLote(lot.id);
     if (visiId == null) return;
@@ -167,7 +139,6 @@ class VisitController extends ChangeNotifier {
   }
 
   Future<void> saveReading(Reading reading) async {
-    // La visita siempre viaja antes que sus lecturas.
     final lote = _loteDe(reading.lotId);
     if (lote != null) {
       await _registrarVisita(lote, porDefecto: reading.observedAt);
@@ -185,7 +156,6 @@ class VisitController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Trampa que no se pudo registrar: queda justificada con el motivo.
   Future<void> justifyTrap(Trap trap, String reason) async {
     final lote = _loteDe(trap.lotId);
     if (lote != null) {
@@ -204,14 +174,10 @@ class VisitController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Finaliza el lote activo. Devuelve true si ya se terminaron todos los lotes.
   Future<bool> finishLot() async {
     final lot = activeLot;
     if (lot == null || !canFinishLot) return false;
     await AppServices.lots.updateLotStatus(lot.id, LotStatus.visitado);
-    // BD: terminar el lote cumple su parte en las actividades asignadas al técnico
-    // (`planificacion_lote` → ejecutada). Si era el último, la actividad se completa sola.
-    // Sin sesión válida lanza SinSesionException: nunca se guarda un resultado sin dueño.
     await AppServices.plannings
         .markLotExecutedForUser(RecordOwner.requerido(), lot.name);
     activeLot = null;
@@ -241,7 +207,6 @@ class VisitController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Al cerrar sesión.
   void reset() {
     assignedLots = [];
     visitId = null;

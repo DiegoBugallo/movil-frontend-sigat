@@ -36,8 +36,6 @@ Future<bool> showAppConfirmDialog(
   return ok ?? false;
 }
 
-/// Pide un motivo escrito para una acción auditada (R-T5). Devuelve el texto
-/// recortado o `null` si se cancela; exige al menos [minimo] caracteres.
 Future<String?> showAppReasonDialog(
   BuildContext context, {
   required String title,

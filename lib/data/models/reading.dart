@@ -173,7 +173,6 @@ class Reading {
   final int specimens;
   final TrapCondition condition;
 
-  /// `visi_id` de la visita a la que pertenece (lo arma `VisitController`).
   final String? visitId;
   final DateTime? bodyChangeDate;
   final DateTime? attractantChangeDate;
@@ -197,8 +196,6 @@ class Reading {
         synced: synced,
       );
 
-  /// Datos para `POST /sincronizacion/lotes` (entidad `lectura_trampa`).
-  /// Solo columnas de dominio; el resto y las marcas de tiempo las pone el servidor.
   Map<String, dynamic> toSyncDatos() => {
         'visi_id': visitId,
         'tram_id': int.parse(trapId),
@@ -212,7 +209,6 @@ class Reading {
         'lect_observaciones': observations,
       };
 
-  /// Serialización local con nombres de columna de la BD.
   Map<String, dynamic> toJson() => {
         'id': id,
         'trap_id': trapId,
@@ -228,7 +224,6 @@ class Reading {
         'evidence': evidence.map((e) => e.toJson()).toList(),
       };
 
-  /// Lectura guardada en el teléfono; [synced] solo lo pone el servidor.
   factory Reading.fromJson(Map<String, dynamic> j) {
     DateTime? fecha(dynamic v) =>
         v == null ? null : DateTime.parse(v as String);

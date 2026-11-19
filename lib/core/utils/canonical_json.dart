@@ -3,29 +3,20 @@ import 'dart:math';
 
 import 'package:crypto/crypto.dart';
 
-/// JSON canónico (RFC 8785) y utilidades de identidad.
-///
-/// Debe producir el mismo texto que `sigat_api.modules.sincronizacion.huella`;
-/// los vectores de `test/canonical_json_test.dart` lo comprueban.
 class CanonicalJson {
   CanonicalJson._();
 
-  /// Serializa [value] según RFC 8785: claves ordenadas, sin espacios y
-  /// con el formato de números y cadenas de ECMAScript.
   static String serialize(Object? value) {
     final salida = StringBuffer();
     _escribir(value, salida);
     return salida.toString();
   }
 
-  /// SHA-256 en hexadecimal minúsculas del JSON canónico de [value].
   static String sha256Hex(Object? value) {
     final bytes = utf8.encode(serialize(value));
     return sha256.convert(bytes).toString();
   }
 
-  /// Instante del contrato: UTC, milisegundos y sufijo `Z`. Igual que el
-  /// `isoformat(timespec="milliseconds")` del backend.
   static String instanteCanonico(DateTime valor) {
     final u = valor.toUtc();
     final anio = u.year.toString().padLeft(4, '0');
@@ -38,7 +29,6 @@ class CanonicalJson {
     return '$anio-$mes-${dia}T$hora:$minuto:$segundo.$milisegundo' 'Z';
   }
 
-  /// UUID v4 aleatorio (RFC 4122), sin depender de paquetes externos.
   static String generarUuidV4() {
     final azar = Random.secure();
     final bytes = List<int>.generate(16, (_) => azar.nextInt(256));
@@ -46,9 +36,6 @@ class CanonicalJson {
     return _formatearUuid(bytes);
   }
 
-  /// UUID determinista derivado de [semilla] (SHA-256, versión 5).
-  /// Mantiene el mismo `registro_id` entre reintentos para que el servidor
-  /// deduplique en vez de duplicar.
   static String uuidDesdeSemilla(String semilla) {
     final bytes = sha256.convert(utf8.encode(semilla)).bytes.sublist(0, 16);
     _marcarUuid(bytes, version: 5);
@@ -108,7 +95,6 @@ class CanonicalJson {
     }
   }
 
-  /// Formato numérico de ECMAScript 6 (el que exige RFC 8785).
   static String _numero(num valor) {
     if (valor is int) return valor.toString();
     final doble = valor.toDouble();
@@ -116,9 +102,8 @@ class CanonicalJson {
       throw ArgumentError.value(
           valor, 'valor', 'NaN e Infinity no existen en JSON.');
     }
-    if (doble == 0) return '0'; // también convierte -0.0 en 0
+    if (doble == 0) return '0';
     final texto = doble.toString();
-    // Dart imprime los enteros como `1.0`; ECMAScript los imprime como `1`.
     return texto.endsWith('.0') ? texto.substring(0, texto.length - 2) : texto;
   }
 }

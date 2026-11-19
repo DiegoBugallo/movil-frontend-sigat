@@ -6,8 +6,6 @@ import '../../data/app_services.dart';
 import '../../data/models/sync_models.dart';
 import 'sync_controller.dart';
 
-/// M09-T — Sincronización: pendiente → sincronizando → todo actualizado.
-/// También muestra las operaciones que el servidor dejó en «revisar» o «rechazada».
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
 
@@ -21,7 +19,6 @@ class _SyncScreenState extends State<SyncScreen> {
   @override
   void initState() {
     super.initState();
-    // Se carga después del primer frame: avisar a otros widgets durante el build no está permitido.
     WidgetsBinding.instance.addPostFrameCallback((_) => _sync.load());
   }
 
@@ -205,7 +202,6 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 }
 
-/// Tarjeta de una operación de la bandeja del servidor.
 class _OperacionTile extends StatelessWidget {
   const _OperacionTile({required this.operacion});
 

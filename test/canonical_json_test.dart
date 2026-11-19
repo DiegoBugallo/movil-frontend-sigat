@@ -1,10 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vigilancia_durazno/core/utils/canonical_json.dart';
 
-/// Contrato compartido de la huella de contenido (R-T4, RN-010).
-///
-/// Los vectores son los mismos que usa el backend; si esta prueba falla, móvil y
-/// servidor ya no calculan la misma huella y el servidor rechazaría todo.
 const _algoritmo = {'canonicalizacion': 'RFC 8785 (JCS)', 'hash': 'sha256'};
 
 const _vectores = <Map<String, dynamic>>[

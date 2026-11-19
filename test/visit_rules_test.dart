@@ -128,7 +128,6 @@ void main() {
 
   test('cada lote tiene su propia visita, estable dentro de la jornada',
       () async {
-    // Antes de abrir un lote no hay visita que referenciar.
     expect(visita.visiIdParaLote('10'), isNull);
 
     final lote = await AppServices.lots.getLot('10');
@@ -137,7 +136,6 @@ void main() {
 
     expect(primero, isNotNull);
     expect(visita.visiIdParaLote('10'), primero);
-    // Otro lote de la misma jornada ⇒ otra visita (un solo pred_id por visita).
     expect(visita.visiIdParaLote('11'), isNot(primero));
   });
 
@@ -154,7 +152,6 @@ void main() {
     expect(visitas.single.payload['pred_id'], 1);
     expect(visitas.single.payload['lote_ids'], [10]);
     expect(visitas.single.payload['ruta_id'], isNull);
-    // Inicio y fin se fijan al abrir el lote: el hash no cambia entre reintentos.
     expect(visitas.single.payload['inicio'], visitas.single.payload['fin']);
 
     final primera = visita.activeTraps.first;

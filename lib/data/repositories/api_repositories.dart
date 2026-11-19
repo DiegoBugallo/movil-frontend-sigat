@@ -262,8 +262,6 @@ class ApiReadingsRepository implements ReadingsRepository {
     ));
   }
 
-  /// Guarda (o reemplaza) la operación `visita` del lote. [startedAt] se fija
-  /// al abrir el lote, así que reenviarla produce el mismo hash y es idempotente.
   @override
   Future<void> saveFieldVisit({
     required String visiId,
@@ -301,15 +299,12 @@ class ApiReadingsRepository implements ReadingsRepository {
       ];
 }
 
-/// Sube y baja la sincronización del Sprint 2: visitas antes que lecturas, en
-/// lotes de 200. La idempotencia y la huella (RFC 8785) las valida el servidor.
 class ApiSyncRepository implements SyncRepository {
   ApiSyncRepository(this._api, this._pendientes);
 
   final ApiClient _api;
   final PendingStore _pendientes;
 
-  /// Mismo `SecureStore` que usa el cliente HTTP: login y sync comparten `disp_id`.
   SecureStore get _secure => _api.store;
 
   static const _maxLote = 200;
@@ -350,7 +345,6 @@ class ApiSyncRepository implements SyncRepository {
     final todos = await _pendientes.forOwner(_yo);
     final dispId = await _dispositivo();
 
-    // Orden del contrato: la visita antes que sus lecturas.
     final visitas = todos
         .where((p) => p.kind == PendingKind.visitaCampo)
         .toList()
@@ -366,7 +360,6 @@ class ApiSyncRepository implements SyncRepository {
     final enviables = <PendingRecord>[];
     for (final lectura in lecturas) {
       if (_visiIdDe(lectura) == null) {
-        // Sin `visi_id` no hay forma de que el backend la acepte: se conserva y se avisa.
         await _pendientes.put(lectura.withError(
             'La lectura no tiene una visita asociada. Abre el lote de nuevo y vuelve a guardarla.'));
         diferidas++;
@@ -466,7 +459,6 @@ class ApiSyncRepository implements SyncRepository {
     final tObservacion = CanonicalJson.instanteCanonico(registro.observedAt);
     final datos = _datosDe(registro);
 
-    // Mismo contenido canónico que `huella.contenido_canonico` del backend.
     final contenido = <String, dynamic>{
       'entidad': registro.kind.entity,
       'accion': 'crear',
@@ -476,7 +468,6 @@ class ApiSyncRepository implements SyncRepository {
       't_observacion': tObservacion,
       'datos': datos,
     };
-    // La captura nunca puede ser anterior a la observación (invariante del validador).
     final captura =
         ahora.isBefore(registro.observedAt) ? registro.observedAt : ahora;
 
@@ -498,13 +489,10 @@ class ApiSyncRepository implements SyncRepository {
 
   String _registroIdDe(PendingRecord registro) {
     if (registro.kind == PendingKind.visitaCampo) return registro.id;
-    // Las lecturas se guardan con ids legibles (`r-…`, `just-…`); el servidor exige UUID.
     return CanonicalJson.uuidDesdeSemilla(
         'registro:${registro.ownerId}:${registro.kind.name}:${registro.id}');
   }
 
-  /// Linaje que exige el validador: TECNICO → `inspeccion_oficial`,
-  /// PRODUCTOR → `autorreporte`.
   String get _linaje => AppServices.session.value?.role == UserRole.productor
       ? 'autorreporte'
       : 'inspeccion_oficial';
@@ -541,7 +529,6 @@ class ApiSyncRepository implements SyncRepository {
           'lect_leida': false,
           'lect_especimenes': null,
           'lect_justificacion': p['reason'] ?? 'Trampa no leída',
-          // No encontrada ⇒ la BD solo admite 1 (Normal) o 2 (Dañada).
           'cond_id': 2,
           'lect_observaciones': p['reason'],
         };
@@ -554,7 +541,6 @@ class ApiSyncRepository implements SyncRepository {
   Future<String> _dispositivo() async {
     final guardado = await _secure.deviceId;
     if (guardado != null && guardado.isNotEmpty) return guardado;
-    // Si la sesión no lo guardó (arranque sin login previo), se crea una vez y se conserva.
     final nuevo = CanonicalJson.generarUuidV4();
     await _secure.saveDeviceId(nuevo);
     return nuevo;

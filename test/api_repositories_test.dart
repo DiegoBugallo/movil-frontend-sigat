@@ -277,7 +277,6 @@ void main() {
       );
       expect((await AppServices.sync.push()).confirmadas, 1);
 
-      // El teléfono no recibió la respuesta y reintenta el mismo contenido.
       await AppServices.readings.saveFieldVisit(
         visiId: visiId,
         predioId: '2',

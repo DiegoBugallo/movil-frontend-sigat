@@ -1,8 +1,3 @@
-/// Modelos de la sincronización (Sprint 2). Son de solo lectura: la app no
-/// inventa resultados del servidor.
-library;
-
-/// Resumen de una subida de la cola local.
 class SyncPushSummary {
   const SyncPushSummary({
     this.confirmadas = 0,
@@ -11,23 +6,15 @@ class SyncPushSummary {
     this.diferidas = 0,
   });
 
-  /// Operaciones que el servidor aplicó (alta, corrección o reenvío idempotente).
   final int confirmadas;
-
-  /// Operaciones que quedaron en «revisar» (las decide el agrónomo desde la bandeja).
   final int enRevision;
-
-  /// Operaciones rechazadas por una regla de negocio o por conflicto de contenido.
   final int rechazadas;
-
-  /// Registros que todavía no se pueden enviar (p. ej. una lectura sin visita).
   final int diferidas;
 
   int get enviadas => confirmadas + enRevision + rechazadas;
   bool get hayPendientes => enRevision > 0 || rechazadas > 0 || diferidas > 0;
 }
 
-/// Operación del servidor que espera una decisión humana (`revisar`) o que fue rechazada.
 class ServerOperation {
   const ServerOperation({
     required this.operId,
@@ -58,7 +45,7 @@ class ServerOperation {
   final String accion;
   final String registroId;
   final int version;
-  final String clasificacion; // revisar | rechazada
+  final String clasificacion;
   final String? motivo;
   final DateTime capturadaEn;
   final DateTime recibidaEn;

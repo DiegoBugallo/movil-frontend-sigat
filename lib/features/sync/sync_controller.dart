@@ -8,9 +8,6 @@ import '../../data/repositories/field_repositories.dart';
 
 enum SyncPhase { idle, syncing, done, error }
 
-/// Sincronización en segundo plano, COMPARTIDA por todos los roles.
-/// Cada usuario solo ve y envía sus propios registros (lo filtra el repositorio).
-/// Sigue avanzando aunque el usuario cambie de pantalla.
 class SyncController extends ChangeNotifier {
   SyncController._();
   static final instance = SyncController._();
@@ -18,7 +15,6 @@ class SyncController extends ChangeNotifier {
   SyncPhase phase = SyncPhase.idle;
   List<SyncItem> items = [];
 
-  /// Operaciones del servidor que quedaron en «revisar» o «rechazada».
   List<ServerOperation> inbox = [];
   SyncPushSummary? summary;
 
@@ -47,7 +43,6 @@ class SyncController extends ChangeNotifier {
 
   Future<void> syncAll() async {
     if (isSyncing) return;
-    // Verifica la conexión real justo antes de enviar.
     final online = await ConnectivityService.instance.refresh();
     if (!online) {
       phase = SyncPhase.error;
@@ -74,7 +69,6 @@ class SyncController extends ChangeNotifier {
       }
     } catch (e) {
       phase = SyncPhase.error;
-      // El repositorio dice el motivo real (sin conexión, servidor no disponible…).
       error = e is DataException
           ? e.message
           : 'Se detuvo la sincronización. Tus datos siguen guardados en este teléfono: puedes reintentar.';
@@ -90,7 +84,6 @@ class SyncController extends ChangeNotifier {
       inbox = await AppServices.sync.inbox();
       inboxError = null;
     } catch (e) {
-      // Sin conexión la bandeja se conserva tal como estaba; no se inventan datos.
       inboxError =
           e is DataException ? e.message : 'No se pudo consultar la bandeja.';
     }
@@ -110,7 +103,6 @@ class SyncController extends ChangeNotifier {
         : '${partes.join(' · ')}. Revisa la bandeja del servidor.';
   }
 
-  /// Al cerrar sesión: el siguiente usuario empieza con su propia cola.
   void reset() {
     phase = SyncPhase.idle;
     items = [];

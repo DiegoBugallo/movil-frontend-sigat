@@ -40,25 +40,18 @@ class BackendDePrueba {
 
   /* ------------------------------------------------------------------ sincronización */
 
-  /// Operaciones recibidas en `POST /sincronizacion/lotes` (en el orden del lote).
   final operacionesRecibidas = <Map<String, dynamic>>[];
 
-  /// Registros (`registro_id`) que el servidor dejará en «revisar» con este motivo.
   final porRevisar = <String, String>{};
 
-  /// Registros (`registro_id`) que el servidor rechazará con este motivo.
   final rechazadas = <String, String>{};
 
-  /// Registros que el servidor ya aplicó (para las aserciones de las pruebas).
   final registrosAplicados = <String>[];
 
-  /// `visi_id` aceptados (visitas de este lote o de lotes anteriores).
   final _visitasAceptadas = <String>{};
 
-  /// `(disp_id, cliente_id)` → hash de la primera recepción (idempotencia R-T4).
   final _porCliente = <String, String>{};
 
-  /// Bandeja: operaciones en «revisar» o «rechazada».
   final _bandeja = <Map<String, dynamic>>[];
 
   var _sigOper = 1000;
@@ -212,8 +205,6 @@ class BackendDePrueba {
 
   /* ================================================================ sincronización */
 
-  /// `POST /sincronizacion/lotes`: valida el sobre, la huella y el orden; responde por
-  /// operación (nunca todo o nada) igual que el backend real.
   http.Response _lotes(http.Request req) {
     final b = jsonDecode(req.body) as Map<String, dynamic>;
     final dispId = b['disp_id']?.toString() ?? '';
@@ -235,7 +226,6 @@ class BackendDePrueba {
       final entidad = op['entidad']?.toString() ?? '';
       final hash = op['hash_contenido']?.toString() ?? '';
 
-      // Mismo contenido canónico que `huella.contenido_canonico` del backend.
       final contenido = <String, dynamic>{
         'entidad': entidad,
         'accion': op['accion'],
@@ -253,7 +243,6 @@ class BackendDePrueba {
         continue;
       }
 
-      // Idempotencia R-T4: (disp_id, cliente_id) es la clave.
       final clave = '$dispId|$clienteId';
       final previo = _porCliente[clave];
       if (previo != null) {
@@ -266,7 +255,6 @@ class BackendDePrueba {
         continue;
       }
 
-      // La lectura necesita una visita ACEPTADA antes (orden del contrato).
       if (entidad == 'lectura_trampa') {
         final datos = Map<String, dynamic>.from(op['datos'] as Map);
         final visiId = datos['visi_id']?.toString();
