@@ -294,7 +294,7 @@ void main() {
       expect(backend.registrosAplicados, hasLength(1));
     });
 
-    test('una operación en «revisar» se conserva y se resuelve con motivo',
+    test('una operación en «revisar» se conserva y aparece en la bandeja',
         () async {
       backend.porRevisar[visiId] = 'La hora del dispositivo no coincide.';
       await AppServices.readings.saveFieldVisit(
@@ -315,48 +315,6 @@ void main() {
       expect(bandeja.single.titulo, 'Visita de campo');
       expect(bandeja.single.enRevision, isTrue);
       expect(bandeja.single.motivo, contains('hora'));
-
-      await expectLater(
-        AppServices.sync.resolveOperation(bandeja.single.operId,
-            confirmar: true, motivo: 'abc'),
-        throwsA(isA<DataException>()),
-      );
-
-      await AppServices.sync.resolveOperation(bandeja.single.operId,
-          confirmar: false, motivo: 'No corresponde al lote');
-      expect(backend.resoluciones.single['decision'], 'descartar');
-      expect(backend.resoluciones.single['motivo'], 'No corresponde al lote');
-      expect(await AppServices.sync.inbox(), isEmpty);
-    });
-
-    test('baja cambios y guarda el cursor para no repetirlos', () async {
-      backend.cambiosServidor.addAll([
-        {
-          'tipo': 'planificacion',
-          'id': '7',
-          'accion': 'creado',
-          't': '2026-10-29T09:00:00Z',
-        },
-        {
-          'tipo': 'notificacion',
-          'id': '8',
-          'accion': 'actualizado',
-          't': '2026-10-29T09:05:00Z',
-        },
-      ]);
-
-      final primera = await AppServices.sync.pullChanges();
-      expect(primera.cambios, hasLength(2));
-      expect(primera.hayMas, isFalse);
-      expect(primera.cursor, '2026-10-29T09:05:00Z|8');
-
-      final segunda = await AppServices.sync.pullChanges();
-      expect(segunda.cambios, isEmpty);
-      expect(
-        backend.peticiones
-            .where((p) => p.startsWith('GET /sincronizacion/cambios')),
-        hasLength(2),
-      );
     });
   });
 }

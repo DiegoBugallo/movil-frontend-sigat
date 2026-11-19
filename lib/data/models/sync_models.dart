@@ -90,61 +90,6 @@ class ServerOperation {
       );
 }
 
-/// Un cambio que el servidor anuncia para que el móvil refresque su copia local.
-class ServerChange {
-  const ServerChange({
-    required this.tipo,
-    required this.id,
-    required this.accion,
-    required this.instante,
-  });
-
-  factory ServerChange.fromJson(Map<String, dynamic> j) => ServerChange(
-        tipo: j['tipo']?.toString() ?? '',
-        id: j['id']?.toString() ?? '',
-        accion: j['accion']?.toString() ?? '',
-        instante: _fecha(j['t']),
-      );
-
-  final String tipo; // planificacion | notificacion | paquete_campo | …
-  final String id;
-  final String accion; // creado | actualizado | invalidado
-  final DateTime instante;
-}
-
-/// Página de la bajada de cambios (`GET /sincronizacion/cambios`).
-class SyncChanges {
-  const SyncChanges({
-    required this.cursor,
-    required this.servidorUtc,
-    required this.cambios,
-    required this.hayMas,
-  });
-
-  static const vacio = SyncChanges(
-    cursor: '',
-    servidorUtc: null,
-    cambios: [],
-    hayMas: false,
-  );
-
-  final String cursor;
-  final DateTime? servidorUtc;
-  final List<ServerChange> cambios;
-  final bool hayMas;
-
-  factory SyncChanges.fromJson(Map<String, dynamic> j) => SyncChanges(
-        cursor: j['cursor']?.toString() ?? '',
-        servidorUtc:
-            j['servidor_utc'] == null ? null : _fecha(j['servidor_utc']),
-        cambios: [
-          for (final c in (j['cambios'] as List? ?? const []))
-            if (c is Map) ServerChange.fromJson(Map<String, dynamic>.from(c)),
-        ],
-        hayMas: j['hay_mas'] as bool? ?? false,
-      );
-}
-
 DateTime _fecha(dynamic v) => v == null
     ? DateTime.now()
     : DateTime.tryParse(v.toString())?.toLocal() ?? DateTime.now();

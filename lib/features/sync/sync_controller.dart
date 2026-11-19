@@ -18,21 +18,18 @@ class SyncController extends ChangeNotifier {
   SyncPhase phase = SyncPhase.idle;
   List<SyncItem> items = [];
 
-  /// Operaciones del servidor que esperan una decisión humana o fueron rechazadas.
+  /// Operaciones del servidor que quedaron en «revisar» o «rechazada».
   List<ServerOperation> inbox = [];
   SyncPushSummary? summary;
-  int cambiosDescargados = 0;
 
   int syncedCount = 0;
   DateTime? lastSync;
   String? error;
   String? inboxError;
   bool loading = false;
-  bool downloading = false;
 
   int get pendingCount => items.where((i) => !i.synced).length;
   bool get isSyncing => phase == SyncPhase.syncing;
-  bool get hayRevisiones => inbox.isNotEmpty;
 
   Future<void> load() async {
     if (isSyncing) return;
@@ -62,15 +59,12 @@ class SyncController extends ChangeNotifier {
     phase = SyncPhase.syncing;
     error = null;
     summary = null;
-    cambiosDescargados = 0;
     notifyListeners();
 
     try {
       final resumen = await AppServices.sync.push();
-      final cambios = await AppServices.sync.pullChanges();
       summary = resumen;
       syncedCount = resumen.confirmadas;
-      cambiosDescargados = cambios.cambios.length;
       await _cargarBandeja();
       items = await AppServices.sync.getPending();
       lastSync = await AppServices.sync.lastSync();
@@ -88,58 +82,6 @@ class SyncController extends ChangeNotifier {
       await _cargarBandeja();
     } finally {
       notifyListeners();
-    }
-  }
-
-  /// Solo la bajada: no toca la cola de subida.
-  Future<void> downloadChanges() async {
-    if (isSyncing || downloading) return;
-    final online = await ConnectivityService.instance.refresh();
-    if (!online) {
-      error = 'Sin conexión. No se pudieron descargar los cambios.';
-      notifyListeners();
-      return;
-    }
-    downloading = true;
-    error = null;
-    notifyListeners();
-    try {
-      final cambios = await AppServices.sync.pullChanges();
-      cambiosDescargados = cambios.cambios.length;
-    } catch (e) {
-      error = e is DataException
-          ? e.message
-          : 'No se pudieron descargar los cambios.';
-    } finally {
-      downloading = false;
-      notifyListeners();
-    }
-  }
-
-  /// Confirma o descarta una operación de la bandeja. Devuelve true si el servidor la aceptó.
-  Future<bool> resolveOperation(
-    ServerOperation operacion, {
-    required bool confirmar,
-    required String motivo,
-  }) async {
-    try {
-      await AppServices.sync.resolveOperation(
-        operacion.operId,
-        confirmar: confirmar,
-        motivo: motivo,
-      );
-      await _cargarBandeja();
-      items = await AppServices.sync.getPending();
-      lastSync = await AppServices.sync.lastSync();
-      phase = items.isEmpty && inbox.isEmpty ? SyncPhase.done : SyncPhase.idle;
-      notifyListeners();
-      return true;
-    } catch (e) {
-      error = e is DataException
-          ? e.message
-          : 'No se pudo resolver la operación. Intenta de nuevo.';
-      notifyListeners();
-      return false;
     }
   }
 
@@ -162,8 +104,9 @@ class SyncController extends ChangeNotifier {
       if (resumen.rechazadas > 0) '${resumen.rechazadas} rechazados',
       if (resumen.diferidas > 0) '${resumen.diferidas} sin visita',
     ];
-    return partes.isEmpty
-        ? 'La sincronización terminó.'
+    if (partes.isEmpty) return 'La sincronización terminó.';
+    return inbox.isEmpty
+        ? '${partes.join(' · ')}.'
         : '${partes.join(' · ')}. Revisa la bandeja del servidor.';
   }
 
@@ -173,13 +116,11 @@ class SyncController extends ChangeNotifier {
     items = [];
     inbox = [];
     summary = null;
-    cambiosDescargados = 0;
     syncedCount = 0;
     lastSync = null;
     error = null;
     inboxError = null;
     loading = false;
-    downloading = false;
     notifyListeners();
   }
 }

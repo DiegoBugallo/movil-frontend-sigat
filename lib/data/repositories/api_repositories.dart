@@ -314,7 +314,6 @@ class ApiSyncRepository implements SyncRepository {
 
   static const _maxLote = 200;
   static const _claveUltima = 'sigat.sync.ultima';
-  static const _claveCursor = 'sigat.sync.cursor';
 
   static bool _esOperacion(PendingKind kind) =>
       kind == PendingKind.visitaCampo ||
@@ -404,63 +403,6 @@ class ApiSyncRepository implements SyncRepository {
         final filas = await _api.getList('/sincronizacion/operaciones');
         return [for (final f in filas) ServerOperation.fromJson(f)];
       });
-
-  @override
-  Future<void> resolveOperation(
-    int operId, {
-    required bool confirmar,
-    required String motivo,
-  }) async {
-    final texto = motivo.trim();
-    if (texto.length < 5) {
-      throw const DataException('Escribe un motivo de al menos 5 caracteres.');
-    }
-    await _llamar('La resolución de la operación', () async {
-      await _api.post(
-        '/sincronizacion/operaciones/$operId/resolucion',
-        body: {
-          'decision': confirmar ? 'confirmar' : 'descartar',
-          'motivo': texto,
-        },
-      );
-    });
-  }
-
-  @override
-  Future<SyncChanges> pullChanges() async {
-    final prefs = await SharedPreferences.getInstance();
-    var cursor = prefs.getString(_claveCursor);
-    final acumulados = <ServerChange>[];
-    DateTime? servidor;
-    var hayMas = false;
-
-    // Se avanza el cursor hasta agotar las páginas (máximo 20 para no bloquear la UI).
-    for (var pagina = 0; pagina < 20; pagina++) {
-      final respuesta = await _llamar('La bajada de cambios', () async {
-        return await _api.get('/sincronizacion/cambios', query: {
-          'desde': cursor,
-          'limite': 100,
-        });
-      });
-      if (respuesta == null) break;
-      final cambios = SyncChanges.fromJson(respuesta);
-      acumulados.addAll(cambios.cambios);
-      servidor = cambios.servidorUtc;
-      hayMas = cambios.hayMas;
-      if (cambios.cursor.isNotEmpty) {
-        cursor = cambios.cursor;
-        await prefs.setString(_claveCursor, cambios.cursor);
-      }
-      if (!hayMas) break;
-    }
-
-    return SyncChanges(
-      cursor: cursor ?? '',
-      servidorUtc: servidor,
-      cambios: acumulados,
-      hayMas: hayMas,
-    );
-  }
 
   Future<(int, int, int)> _enviarLote(
       List<PendingRecord> lote, String dispId) async {

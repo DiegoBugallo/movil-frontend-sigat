@@ -7,7 +7,7 @@ import '../../data/models/sync_models.dart';
 import 'sync_controller.dart';
 
 /// M09-T — Sincronización: pendiente → sincronizando → todo actualizado.
-/// También muestra la bandeja de operaciones en «revisar» o «rechazada» (R-T5).
+/// También muestra las operaciones que el servidor dejó en «revisar» o «rechazada».
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
 
@@ -88,21 +88,13 @@ class _SyncScreenState extends State<SyncScreen> {
                       ),
                       const SizedBox(height: 6),
                       const Text(
-                        'El servidor no aplicó estos registros todavía. Confírmalos o descártalos; '
-                        'la decisión queda registrada con tu motivo.',
+                        'El servidor no aplicó estos registros. El motivo queda registrado para '
+                        'que puedas corregirlos desde el lote.',
                         style: AppText.caption,
                       ),
                       const SizedBox(height: AppSpacing.sm),
                       for (final op in _sync.inbox) ...[
-                        _OperacionTile(
-                          operacion: op,
-                          onConfirmar: online
-                              ? () => _resolver(op, confirmar: true)
-                              : null,
-                          onDescartar: online
-                              ? () => _resolver(op, confirmar: false)
-                              : null,
-                        ),
+                        _OperacionTile(operacion: op),
                         const SizedBox(height: 10),
                       ],
                     ],
@@ -139,40 +131,12 @@ class _SyncScreenState extends State<SyncScreen> {
                     color: AppColors.primaryDark,
                     onPressed: online ? _sync.syncAll : null,
                   ),
-                if (online)
-                  SecondaryButton(
-                    label: 'Descargar cambios',
-                    icon: Icons.cloud_download_outlined,
-                    onPressed: _sync.downloading ? null : _sync.downloadChanges,
-                  ),
               ]),
             ],
           );
         },
       ),
     );
-  }
-
-  Future<void> _resolver(ServerOperation op, {required bool confirmar}) async {
-    final motivo = await showAppReasonDialog(
-      context,
-      title: confirmar ? 'Confirmar operación' : 'Descartar operación',
-      message: confirmar
-          ? 'El servidor aplicará «${op.titulo}» aunque una regla lo dejó en revisión. '
-              'Explica por qué es correcto.'
-          : '«${op.titulo}» no se aplicará en el servidor. Explica el motivo del descarte.',
-      label: 'Motivo',
-      confirmLabel: confirmar ? 'Confirmar' : 'Descartar',
-      destructive: !confirmar,
-    );
-    if (motivo == null) return;
-    final ok =
-        await _sync.resolveOperation(op, confirmar: confirmar, motivo: motivo);
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_sync.error ?? 'No se pudo resolver.')),
-      );
-    }
   }
 
   List<Widget> _header(bool online, int total) {
@@ -225,8 +189,6 @@ class _SyncScreenState extends State<SyncScreen> {
       if (s.enRevision > 0) '${s.enRevision} por revisar',
       if (s.rechazadas > 0) '${s.rechazadas} rechazadas',
       if (s.diferidas > 0) '${s.diferidas} sin visita',
-      if (_sync.cambiosDescargados > 0)
-        '${_sync.cambiosDescargados} cambios descargados',
     ];
     return AppCard(
       tone: AppCardTone.highlighted,
@@ -245,15 +207,9 @@ class _SyncScreenState extends State<SyncScreen> {
 
 /// Tarjeta de una operación de la bandeja del servidor.
 class _OperacionTile extends StatelessWidget {
-  const _OperacionTile({
-    required this.operacion,
-    required this.onConfirmar,
-    required this.onDescartar,
-  });
+  const _OperacionTile({required this.operacion});
 
   final ServerOperation operacion;
-  final VoidCallback? onConfirmar;
-  final VoidCallback? onDescartar;
 
   @override
   Widget build(BuildContext context) {
@@ -281,24 +237,6 @@ class _OperacionTile extends StatelessWidget {
           if (operacion.motivo != null && operacion.motivo!.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(operacion.motivo!, style: AppText.caption),
-          ],
-          if (operacion.enRevision) ...[
-            const SizedBox(height: AppSpacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: SecondaryButton(
-                      label: 'Descartar',
-                      color: AppColors.error,
-                      onPressed: onDescartar),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child:
-                      PrimaryButton(label: 'Confirmar', onPressed: onConfirmar),
-                ),
-              ],
-            ),
           ],
         ],
       ),

@@ -85,16 +85,6 @@ abstract class SyncRepository {
 
   /// Operaciones del usuario en «revisar» o «rechazada» (bandeja del móvil).
   Future<List<ServerOperation>> inbox();
-
-  /// Confirma o descarta una operación de la bandeja (R-T5).
-  Future<void> resolveOperation(
-    int operId, {
-    required bool confirmar,
-    required String motivo,
-  });
-
-  /// Baja los cambios del servidor desde el cursor guardado.
-  Future<SyncChanges> pullChanges();
 }
 
 abstract class HistoryRepository {
