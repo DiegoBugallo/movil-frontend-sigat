@@ -6,6 +6,15 @@ Registro de cambios del código de la app Flutter. **El backend tiene su propio 
 El detalle de cada PR (diff, pruebas, capturas) vive en GitHub. Aquí queda la rationale de
 nivel sprint y los pendientes, no los comentarios de una línea.
 
+## Sprint 3 · Fase 1: resumen del lote para el técnico
+
+- **Ruta propia** `AppRoutes.lotsSummary = '/lots/summary'` (técnico), con argumento `String lotId`. No reutiliza `/agronomist/lot/summary`, que sigue siendo del agrónomo.
+- **`LotSummaryScreen` por lote**: recibe `lotId` y consulta `getLotSummary(lotId)` en lugar de leer `AgronomistController.summary`. Sin `lotId` (entradas del agrónomo en el inicio y el perfil) usa el lote seleccionado, así que esas entradas no cambian.
+- **Entrada desde el lote**: botón «Ver resumen del lote» en `LotDetailScreen`.
+- **Sin conexión**: `ApiAgronomistRepository.getLotSummary` guarda la última respuesta por usuario y lote en `LotSummaryCache` (`SharedPreferences`, clave versionada `sigat.resumen_lote.v1`). Si la red falla, muestra esa copia con aviso y su fecha (`LotSummary.cachedAt`). Si nunca se consultó, muestra un error con reintento; nunca pantalla en blanco.
+- **Pruebas**: `test/lot_summary_cache_test.dart` (ida y vuelta, aislamiento por usuario y lote, valor dañado).
+- **Fuera de alcance (no tocado)**: paquete de campo, `MapaPredio`, GeoJSON, mapas y la Fase 2 (historial y `VisitDetailScreen`).
+
 ## Pendientes técnicos
 
 1. **Resolución de operaciones en la app** — la bandeja de sincronización muestra el
