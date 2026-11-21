@@ -5,6 +5,7 @@ import '../api/api_client.dart';
 import '../api/secure_store.dart';
 import '../app_services.dart';
 import '../local/lot_summary_cache.dart';
+import '../local/paquete_campo_store.dart';
 import '../local/pending_store.dart';
 import '../local/record_owner.dart';
 import '../local/visit_detail_cache.dart';
@@ -13,6 +14,7 @@ import '../models/field_record.dart';
 import '../models/home_summary.dart';
 import '../models/lot.dart';
 import '../models/lot_summary.dart';
+import '../models/paquete_campo.dart';
 import '../models/photo_file.dart';
 import '../models/planning.dart';
 import '../models/producer.dart';
@@ -184,12 +186,30 @@ class ApiTrapsRepository implements TrapsRepository {
 }
 
 class ApiMapRepository implements MapRepository {
-  ApiMapRepository(this._api);
+  ApiMapRepository(this._api, {PaqueteCampoStore? store})
+      : _store = store ?? PaqueteCampoStore();
   final ApiClient _api;
+  final PaqueteCampoStore _store;
 
-  /// La app todavía no guarda mosaicos sin conexión: nada está descargado.
+  /// Hay un paquete guardado y, si hay red, sigue siendo la versión vigente del servidor. Si el
+  /// servidor trae otra versión o hash (o el paquete quedó invalidado), la copia local se borra.
+  /// Sin respuesta del servidor se considera descargado si hay copia.
   @override
-  Future<bool> isMapDownloaded(String predioId) async => false;
+  Future<bool> isMapDownloaded(String predioId) async {
+    final local = await _store.leer(predioId);
+    if (local == null) return false;
+    if (!AppServices.isOnline.value) return true;
+    try {
+      final json =
+          await _api.get('/predios/${Uri.encodeComponent(predioId)}/paquete-campo');
+      final info = PaqueteCampo.fromApi(json ?? const <String, dynamic>{});
+      if (local.coincide(info)) return true;
+      await _store.borrar(predioId);
+      return false;
+    } on ApiException {
+      return true;
+    }
+  }
 
   @override
   Future<void> downloadMap(String predioId,
@@ -198,13 +218,42 @@ class ApiMapRepository implements MapRepository {
       throw const OfflineException(
           'Necesitas conexión a internet para descargar el mapa.');
     }
-    // Paquete de campo del predio (geometrías, trampas y mosaico). Hoy responde 501.
-    await _llamar(
-        'El mapa del predio',
-        () => _api
-            .get('/predios/${Uri.encodeComponent(predioId)}/paquete-campo'));
-    throw const NotAvailableYet(
-        'La descarga del mapa para trabajar sin conexión todavía no está disponible.');
+    final id = Uri.encodeComponent(predioId);
+    final info = await _llamar('El paquete de campo', () async {
+      final json = await _api.get('/predios/$id/paquete-campo');
+      return PaqueteCampo.fromApi(json ?? const <String, dynamic>{});
+    });
+    onProgress?.call(0.2);
+    final local = await _store.leer(predioId);
+    if (local != null && local.coincide(info)) {
+      onProgress?.call(1);
+      return;
+    }
+    final respuesta = await _llamar(
+        'El paquete de campo',
+        () => _api.getCondicional('/predios/$id/paquete-campo/contenido',
+            etag: local?.etag));
+    onProgress?.call(0.8);
+    final contenido = respuesta.cuerpo;
+    if (contenido == null) {
+      // 304: el servidor confirma que la copia del teléfono sigue siendo la vigente.
+      if (local != null) {
+        onProgress?.call(1);
+        return;
+      }
+      throw const DataException('El servidor no envió el paquete de campo.');
+    }
+    final hash = contenido['paqu_hash'] as String;
+    await _store.guardar(
+        predioId,
+        PaqueteLocal(
+          version: contenido['paqu_version'] as int,
+          hash: hash,
+          etag: respuesta.etag ?? '"$hash"',
+          guardadoEn: DateTime.now(),
+          contenido: contenido,
+        ));
+    onProgress?.call(1);
   }
 }
 

@@ -23,6 +23,17 @@ nivel sprint y los pendientes, no los comentarios de una línea.
 - **Modelo**: `VisitRecord` gana predio, técnico, lotes (códigos), `estado_revision` (nombre del contrato; en la BD es `visi_estado_revision`), motivo de revisión y trampas leídas.
 - **Pendiente**: el contrato no entrega estado por lote. La pantalla muestra la lista de lotes sin estado individual.
 
+## Sprint 3 · Fase 3: paquete de campo con caché e invalidación
+
+- **Cliente HTTP**: `ApiClient.getCondicional` envía `If-None-Match` y trata el **304** como respuesta válida (sin cuerpo, sin error).
+- **Metadatos**: `PaqueteCampo` refleja `PaqueteCampoInfo` (versión, hash, fecha, invalidación, tamaño).
+- **Persistencia**: `PaqueteCampoStore` guarda un paquete por predio con la clave versionada `sigat.paquete.v1.<predioId>`. Guardar reemplaza el anterior.
+- **Descarga** (`ApiMapRepository.downloadMap`): pide `/paquete-campo`, compara versión y hash con la copia local y solo baja `/contenido` si cambió.
+- **Invalidación** (`isMapDownloaded`): con red, si el servidor trae otra versión, otro hash o un paquete invalidado, borra la copia local. Sin red, considera descargado el predio si hay copia.
+- **Interfaz**: `MapDownloadCard` y `MapScreen` ya cubren los estados; no cambiaron.
+- **Fuera de alcance (no tocado)**: el bloque `mapa` (GeoJSON) del paquete se guarda tal cual llega y no se modela ni se expone. Queda para el equipo de mapas y el backend.
+- **Riesgo conocido**: `SharedPreferences` no es un almacén ideal para paquetes grandes. Si el GeoJSON crece, conviene migrar a archivos.
+
 ## Pendientes técnicos
 
 1. **Resolución de operaciones en la app** — la bandeja de sincronización muestra el
