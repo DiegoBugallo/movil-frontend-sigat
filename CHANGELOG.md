@@ -39,7 +39,7 @@ nivel sprint y los pendientes, no los comentarios de una línea.
 - **Fake backend** (`test/support/backend_de_prueba.dart`): paquetes de campo por predio con `ETag`, respuesta **304** con `If-None-Match` y el helper `paqueteDePrueba`. Para el detalle de visita y el resumen se usa `respuestasExtra` con las rutas `GET /visitas/{id}` y `GET /lotes/{id}/resumen`.
 - **`test/detalle_visita_test.dart`**: detalle del servidor, copia con fecha sin red, error claro sin copia y resumen del lote sin red.
 - **`test/paquete_campo_test.dart`**: descarga, no volver a bajar con el mismo hash, invalidación por hash o por `invalidado_en`, disponibilidad sin red, declaración de sin conexión y **304**.
-- **Pendiente de verificar en CI**: las pruebas y el formato no se ejecutaron en el entorno donde se escribieron. `dart format`, `flutter analyze`, `flutter test` y `flutter build apk` deben correr en la rama antes de fusionar.
+- **Verificación**: `flutter test` con 158 pruebas en verde, `dart format` sin cambios, `flutter analyze` sin errores ni warnings (quedan 103 avisos de deprecación de `material.dart`) y APK debug compilado con `--android-skip-build-dependency-validation`.
 
 ## Sprint 3 · Paquete de campo: GeoJSON
 
@@ -49,13 +49,24 @@ nivel sprint y los pendientes, no los comentarios de una línea.
 - **Pruebas**: `test/mapa_predio_test.dart` (lectura sin red, sin paquete, forma inválida). El fixture del fake backend trae lotes y trampas.
 - **Pendiente**: dibujar las capas en MapLibre y el mosaico satelital siguen fuera de este sprint.
 
+## Cierre del Sprint 3 (móvil)
+
+- **Rama**: `feature/sprint3-paqueteCampo`, sobre `develop` (`3ee8de3`).
+- **Pruebas**: 158 en verde; se suman las de resumen con caché, detalle de visita, paquete de campo y forma del GeoJSON.
+- **Formato y análisis**: 5 archivos se alinearon con `dart format`; se quitó una expresión nula muerta en `VisitDetailScreen`. `flutter analyze` queda sin errores ni warnings.
+- **App en emulador**: resumen del lote accesible desde el detalle, historial con detalle y tarjeta de descarga con sus estados.
+- **Backend local**: paquete `200` con ETag y `304`, visitas `200`, resumen `200`. El resumen devuelve MTD, umbral y fecha de efecto en `null` porque la semilla no trae lecturas, periodos ni umbral.
+- **Fuera de alcance**: MapLibre, mosaicos, imágenes satelitales y dibujo de capas.
+- **Pendiente de integración**: copiar `contracts/openapi.json` a `lib/contracts/`, repetir la descarga real en la app, prueba de modo avión, actualizar la tabla de estado de `api_repositories.dart` y dejar la CI del móvil en verde.
+
 ## Pendientes técnicos
 
 1. **Resolución de operaciones en la app** — la bandeja de sincronización muestra el
    estado, pero no permite aceptar ni descartar: el backend no expone
    `POST /sincronizacion/operaciones/{oper_id}/resolucion` (Sprint 3).
-2. **Bajada de cambios y paquete de campo** — `GET /sincronizacion/cambios` no está
-   implementado; la app solo sube y consulta lo recibido.
+2. **Bajada de cambios** — `GET /sincronizacion/cambios` sigue sin implementarse; el
+   paquete de campo ya se descarga y se cachea, pero la app solo sube y consulta lo
+   recibido.
 3. **MTD/concepto** — sin recálculo ni reemisión en el teléfono; se resuelve en el
    backend.
 4. **Autorreportes de productor y evidencias** — `push()` envía visita, lectura y
