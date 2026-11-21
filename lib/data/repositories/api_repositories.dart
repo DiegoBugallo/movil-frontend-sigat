@@ -7,6 +7,7 @@ import '../app_services.dart';
 import '../local/lot_summary_cache.dart';
 import '../local/pending_store.dart';
 import '../local/record_owner.dart';
+import '../local/visit_detail_cache.dart';
 import '../models/app_notification.dart';
 import '../models/field_record.dart';
 import '../models/home_summary.dart';
@@ -554,9 +555,11 @@ class ApiSyncRepository implements SyncRepository {
 }
 
 class ApiHistoryRepository implements HistoryRepository {
-  ApiHistoryRepository(this._api, this._pendientes);
+  ApiHistoryRepository(this._api, this._pendientes, {VisitDetailCache? cache})
+      : _cache = cache ?? VisitDetailCache();
   final ApiClient _api;
   final PendingStore _pendientes;
+  final VisitDetailCache _cache;
 
   /// Visitas del servidor (confirmadas) + visitas terminadas en este teléfono (pendientes).
   /// Si el servidor no responde y hay visitas locales, se muestran solo esas, marcadas como
@@ -583,6 +586,30 @@ class ApiHistoryRepository implements HistoryRepository {
     final ids = servidor.map((v) => v.id).toSet();
     return [...servidor, ...locales.where((v) => !ids.contains(v.id))]
       ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
+  /// Una visita que solo existe en este teléfono se lee de la cola local. Una del servidor se
+  /// pide a `GET /visitas/{id}`; sin red se muestra la última copia guardada para este usuario.
+  @override
+  Future<VisitRecord> getVisit(String id) async {
+    final dueno = _yo;
+    for (final p in await _pendientes.forOwner(dueno)) {
+      if (p.kind == PendingKind.visita && p.id == id) {
+        return VisitRecord.fromJson(p.payload);
+      }
+    }
+    try {
+      final datos = await _llamar('El detalle de la visita', () async {
+        final json = await _api.get('/visitas/${Uri.encodeComponent(id)}');
+        return json ?? const <String, dynamic>{};
+      });
+      await _cache.save(dueno, id, datos);
+      return VisitRecord.fromApi(datos);
+    } on OfflineException {
+      final guardado = await _cache.read(dueno, id);
+      if (guardado == null) rethrow;
+      return VisitRecord.fromApi(guardado.datos, cachedAt: guardado.guardadoEn);
+    }
   }
 
   @override

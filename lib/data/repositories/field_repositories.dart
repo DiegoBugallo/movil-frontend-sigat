@@ -83,4 +83,7 @@ abstract class SyncRepository {
 abstract class HistoryRepository {
   Future<List<VisitRecord>> getVisits();
   Future<void> saveVisit(VisitRecord visit);
+
+  /// Detalle de una visita: del servidor, de la cola local o la copia guardada sin red.
+  Future<VisitRecord> getVisit(String id);
 }

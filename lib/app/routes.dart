@@ -23,6 +23,7 @@ import '../features/auth/access_context_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/recover_password_screen.dart';
 import '../features/history/history_screen.dart';
+import '../features/history/visit_detail_screen.dart';
 import '../features/lots/lot_detail_screen.dart';
 import '../features/lots/lots_screen.dart';
 import '../features/producer/harvest_saved_screen.dart';
@@ -76,6 +77,7 @@ class AppRoutes {
   static const finishVisit = '/visit/finish';
   static const sync = '/sync';
   static const history = '/history';
+  static const visitDetail = '/history/detail'; // arguments: String visitId
   static const profilePhoto =
       '/profile/photo'; // arguments: PhotoFile → devuelve ProfilePhotoResult
   static const profileNotifications = '/profile/notifications';
@@ -160,6 +162,7 @@ class AppRoutes {
     finishVisit,
     sync,
     history,
+    visitDetail,
   };
 
   /// Rutas de más de un rol: hay que tener sesión con un rol conocido.
@@ -210,6 +213,8 @@ class AppRoutes {
       finishVisit => const FinishVisitScreen(),
       sync => const SyncScreen(),
       history => const HistoryScreen(),
+      visitDetail when s.arguments is String =>
+        VisitDetailScreen(visitId: s.arguments! as String),
       profilePhoto when s.arguments is PhotoFile =>
         ProfilePhotoScreen(photo: s.arguments! as PhotoFile),
       profileNotifications => const NotificationSettingsScreen(),

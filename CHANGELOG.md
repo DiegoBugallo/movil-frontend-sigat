@@ -15,6 +15,14 @@ nivel sprint y los pendientes, no los comentarios de una línea.
 - **Pruebas**: `test/lot_summary_cache_test.dart` (ida y vuelta, aislamiento por usuario y lote, valor dañado).
 - **Fuera de alcance (no tocado)**: paquete de campo, `MapaPredio`, GeoJSON, mapas y la Fase 2 (historial y `VisitDetailScreen`).
 
+## Sprint 3 · Fase 2: historial con detalle de visita
+
+- **Ruta** `AppRoutes.visitDetail = '/history/detail'` (técnico), con argumento `String visitId`. Cada visita del historial abre `VisitDetailScreen`.
+- **Repositorio**: `HistoryRepository.getVisit(id)`. Las visitas del servidor se piden a `GET /visitas/{id}`; una visita que solo existe en el teléfono se lee de la cola local.
+- **Sin conexión**: la última copia del detalle se guarda por usuario y visita (`VisitDetailCache`, clave versionada `sigat.detalle_visita.v1`) y se muestra con aviso y fecha.
+- **Modelo**: `VisitRecord` gana predio, técnico, lotes (códigos), `estado_revision` (nombre del contrato; en la BD es `visi_estado_revision`), motivo de revisión y trampas leídas.
+- **Pendiente**: el contrato no entrega estado por lote. La pantalla muestra la lista de lotes sin estado individual.
+
 ## Pendientes técnicos
 
 1. **Resolución de operaciones en la app** — la bandeja de sincronización muestra el
