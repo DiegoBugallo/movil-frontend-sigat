@@ -70,6 +70,7 @@ class LotSummary {
     required this.activeFindings,
     this.pendingReviewLabel,
     this.expectedHarvest,
+    this.cachedAt,
   });
 
   final String lotId;
@@ -115,4 +116,7 @@ class LotSummary {
   final String? pendingReviewLabel;
 
   final DateTime? expectedHarvest;
+
+  /// Momento en que se guardó la copia que se muestra (null = datos en vivo).
+  final DateTime? cachedAt;
 }

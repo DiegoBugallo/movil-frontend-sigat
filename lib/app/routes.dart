@@ -64,6 +64,7 @@ class AppRoutes {
   static const home = '/home';
   static const lots = '/lots'; // arguments: LotsFilter? (filtro inicial)
   static const lotDetail = '/lots/detail'; // arguments: String lotId
+  static const lotsSummary = '/lots/summary'; // arguments: String lotId
   static const identifyTrap =
       '/trap/identify'; // arguments: String? código inicial
   static const scanTrap = '/trap/scan';
@@ -149,6 +150,7 @@ class AppRoutes {
     home,
     lots,
     lotDetail,
+    lotsSummary,
     identifyTrap,
     scanTrap,
     trapIdentified,
@@ -194,6 +196,8 @@ class AppRoutes {
               : LotsFilter.todos),
       lotDetail when s.arguments is String =>
         LotDetailScreen(lotId: s.arguments! as String),
+      lotsSummary when s.arguments is String =>
+        LotSummaryScreen(lotId: s.arguments! as String),
       identifyTrap => IdentifyTrapScreen(initialCode: s.arguments as String?),
       scanTrap => const ScanTrapScreen(),
       trapIdentified when s.arguments is TrapLookup =>

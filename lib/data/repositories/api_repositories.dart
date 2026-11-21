@@ -4,6 +4,7 @@ import '../../core/utils/canonical_json.dart';
 import '../api/api_client.dart';
 import '../api/secure_store.dart';
 import '../app_services.dart';
+import '../local/lot_summary_cache.dart';
 import '../local/pending_store.dart';
 import '../local/record_owner.dart';
 import '../models/app_notification.dart';
@@ -1026,7 +1027,7 @@ String _concepto(String? v) => switch (v) {
     };
 
 /// `ResumenLote` (GET /lotes/{id}/resumen). Todo lo calcula el servidor.
-LotSummary lotSummaryFromApi(Map<String, dynamic> j) {
+LotSummary lotSummaryFromApi(Map<String, dynamic> j, {DateTime? cachedAt}) {
   final etapa = j['etapa'] as Map<String, dynamic>? ?? const {};
   final serie = [
     for (final p in (j['serie'] as List? ?? const []))
@@ -1058,6 +1059,7 @@ LotSummary lotSummaryFromApi(Map<String, dynamic> j) {
     activeFindings: _int(j['hallazgos']),
     pendingReviewLabel: j['revision_pendiente'] as String?,
     expectedHarvest: _fecha(j['cosecha_esperada']),
+    cachedAt: cachedAt,
   );
 }
 
@@ -1088,8 +1090,10 @@ InspectionConfig inspectionConfigFromApi(Map<String, dynamic> j,
 }
 
 class ApiAgronomistRepository implements AgronomistRepository {
-  ApiAgronomistRepository(this._api);
+  ApiAgronomistRepository(this._api, {LotSummaryCache? cache})
+      : _cache = cache ?? LotSummaryCache();
   final ApiClient _api;
+  final LotSummaryCache _cache;
 
   @override
   Future<List<FieldRecord>> getPendingRecords() =>
@@ -1118,13 +1122,24 @@ class ApiAgronomistRepository implements AgronomistRepository {
         return fieldRecordFromApi(r ?? const {});
       });
 
+  /// Sin conexión muestra la última copia guardada para este usuario, con su fecha.
   @override
-  Future<LotSummary> getLotSummary(String lotId) =>
-      _llamar('El resumen del lote', () async {
-        final r =
+  Future<LotSummary> getLotSummary(String lotId) async {
+    final dueno = _yo;
+    try {
+      final datos = await _llamar('El resumen del lote', () async {
+        final json =
             await _api.get('/lotes/${Uri.encodeComponent(lotId)}/resumen');
-        return lotSummaryFromApi(r ?? const {});
+        return json ?? const <String, dynamic>{};
       });
+      await _cache.save(dueno, lotId, datos);
+      return lotSummaryFromApi(datos);
+    } on OfflineException {
+      final guardado = await _cache.read(dueno, lotId);
+      if (guardado == null) rethrow;
+      return lotSummaryFromApi(guardado.datos, cachedAt: guardado.guardadoEn);
+    }
+  }
 
   @override
   Future<List<ActivityRecord>> getLotHistory(String lotId) =>
