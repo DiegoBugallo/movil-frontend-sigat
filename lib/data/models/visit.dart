@@ -19,6 +19,13 @@ class VisitRecord {
     required this.lotsDone,
     required this.lotsTotal,
     required this.status,
+    this.predioNombre,
+    this.tecnico,
+    this.lotes = const [],
+    this.estadoRevision,
+    this.motivoRevision,
+    this.trampasLeidas,
+    this.cachedAt,
   });
 
   final String id;
@@ -26,6 +33,21 @@ class VisitRecord {
   final int lotsDone;
   final int lotsTotal;
   final VisitStatus status;
+
+  /// Predio de la visita (solo visitas del servidor).
+  final String? predioNombre;
+  final String? tecnico;
+
+  /// Códigos de los lotes inspeccionados (`lotes` del contrato).
+  final List<String> lotes;
+
+  /// `estado_revision` del contrato (p. ej. `pendiente`, `aceptado`). null = aún no enviada.
+  final String? estadoRevision;
+  final String? motivoRevision;
+  final int? trampasLeidas;
+
+  /// Momento en que se guardó la copia que se muestra (null = datos en vivo).
+  final DateTime? cachedAt;
 
   String get title => status == VisitStatus.enProgreso
       ? 'Visita en curso'
@@ -38,6 +60,7 @@ class VisitRecord {
         lotsTotal: j['lots_total'] as int,
         status: VisitStatus.values.firstWhere((s) => s.name == j['status'],
             orElse: () => VisitStatus.completada),
+        lotes: [for (final l in (j['lotes'] as List? ?? const [])) '$l'],
       );
 
   Map<String, dynamic> toJson() => {
@@ -46,17 +69,26 @@ class VisitRecord {
         'lots_done': lotsDone,
         'lots_total': lotsTotal,
         'status': status.name,
+        'lotes': lotes,
       };
 
-  /// Visita que devuelve `GET /visitas` (`Visita` del contrato): ya está en el servidor.
-  factory VisitRecord.fromApi(Map<String, dynamic> j) {
-    final lotes = (j['lote_ids'] as List?) ?? (j['lotes'] as List?) ?? const [];
+  /// Visita que devuelve `GET /visitas` o `GET /visitas/{id}` (`Visita` del contrato).
+  /// Ya está en el servidor. [cachedAt] marca una copia guardada sin red.
+  factory VisitRecord.fromApi(Map<String, dynamic> j, {DateTime? cachedAt}) {
+    final ids = (j['lote_ids'] as List?) ?? (j['lotes'] as List?) ?? const [];
     return VisitRecord(
       id: j['visi_id'].toString(),
       date: DateTime.parse((j['t_inicio_obs'] ?? j['t_captura']) as String),
-      lotsDone: lotes.length,
-      lotsTotal: lotes.length,
+      lotsDone: ids.length,
+      lotsTotal: ids.length,
       status: VisitStatus.sincronizada,
+      predioNombre: j['pred_nombre'] as String?,
+      tecnico: j['tecnico'] as String?,
+      lotes: [for (final l in (j['lotes'] as List? ?? const [])) '$l'],
+      estadoRevision: j['estado_revision'] as String?,
+      motivoRevision: j['motivo_revision'] as String?,
+      trampasLeidas: j['trampas_leidas'] as int?,
+      cachedAt: cachedAt,
     );
   }
 }

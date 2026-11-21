@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
+import '../../app/routes.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_services.dart';
 import '../../data/models/visit.dart';
 import '../../shared/shared.dart';
 
-/// M10-T — Historial de visitas.
+/// M10-T — Historial de visitas. Al tocar una visita se abre su detalle.
 class HistoryScreen extends StatefulWidget {
   const HistoryScreen({super.key});
 
@@ -94,18 +95,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                               child: Text(Fmt.relativeDay(v.date),
                                   style: AppText.caption),
                             ),
-                          AppCard(
-                            padding: const EdgeInsets.all(14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(v.title, style: AppText.title),
-                                Text('${v.lotsDone}/${v.lotsTotal} lotes',
-                                    style: AppText.caption),
-                                const SizedBox(height: 8),
-                                StatusBadge(v.status.label,
-                                    tone: _tone(v.status)),
-                              ],
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () => Navigator.of(context).pushNamed(
+                                AppRoutes.visitDetail,
+                                arguments: v.id),
+                            child: AppCard(
+                              padding: const EdgeInsets.all(14),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(v.title, style: AppText.title),
+                                  Text('${v.lotsDone}/${v.lotsTotal} lotes',
+                                      style: AppText.caption),
+                                  const SizedBox(height: 8),
+                                  StatusBadge(v.status.label,
+                                      tone: _tone(v.status)),
+                                ],
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),

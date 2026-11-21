@@ -4,13 +4,18 @@ import '../../core/utils/canonical_json.dart';
 import '../api/api_client.dart';
 import '../api/secure_store.dart';
 import '../app_services.dart';
+import '../local/lot_summary_cache.dart';
+import '../local/paquete_campo_store.dart';
 import '../local/pending_store.dart';
 import '../local/record_owner.dart';
+import '../local/visit_detail_cache.dart';
 import '../models/app_notification.dart';
 import '../models/field_record.dart';
 import '../models/home_summary.dart';
 import '../models/lot.dart';
 import '../models/lot_summary.dart';
+import '../models/mapa_predio.dart';
+import '../models/paquete_campo.dart';
 import '../models/photo_file.dart';
 import '../models/planning.dart';
 import '../models/producer.dart';
@@ -182,12 +187,35 @@ class ApiTrapsRepository implements TrapsRepository {
 }
 
 class ApiMapRepository implements MapRepository {
-  ApiMapRepository(this._api);
+  ApiMapRepository(this._api, {PaqueteCampoStore? store})
+      : _store = store ?? PaqueteCampoStore();
   final ApiClient _api;
+  final PaqueteCampoStore _store;
 
-  /// La app todavía no guarda mosaicos sin conexión: nada está descargado.
+  /// Hay un paquete guardado y, si hay red, sigue siendo la versión vigente del servidor. Si el
+  /// servidor trae otra versión o hash (o el paquete quedó invalidado), la copia local se borra.
+  /// Sin respuesta del servidor se considera descargado si hay copia.
   @override
-  Future<bool> isMapDownloaded(String predioId) async => false;
+  Future<bool> isMapDownloaded(String predioId) async {
+    final local = await _store.leer(predioId);
+    if (local == null) return false;
+    if (!AppServices.isOnline.value) return true;
+    try {
+      final json = await _api
+          .get('/predios/${Uri.encodeComponent(predioId)}/paquete-campo');
+      final info = PaqueteCampo.fromApi(json ?? const <String, dynamic>{});
+      if (local.coincide(info)) return true;
+      await _store.borrar(predioId);
+      return false;
+    } on ApiException {
+      return true;
+    }
+  }
+
+  /// GeoJSON del predio guardado en el teléfono, para dibujarlo en MapLibre sin red.
+  @override
+  Future<MapaPredio?> getMapaLocal(String predioId) async =>
+      (await _store.leer(predioId))?.mapa;
 
   @override
   Future<void> downloadMap(String predioId,
@@ -196,13 +224,44 @@ class ApiMapRepository implements MapRepository {
       throw const OfflineException(
           'Necesitas conexión a internet para descargar el mapa.');
     }
-    // Paquete de campo del predio (geometrías, trampas y mosaico). Hoy responde 501.
-    await _llamar(
-        'El mapa del predio',
-        () => _api
-            .get('/predios/${Uri.encodeComponent(predioId)}/paquete-campo'));
-    throw const NotAvailableYet(
-        'La descarga del mapa para trabajar sin conexión todavía no está disponible.');
+    final id = Uri.encodeComponent(predioId);
+    final info = await _llamar('El paquete de campo', () async {
+      final json = await _api.get('/predios/$id/paquete-campo');
+      return PaqueteCampo.fromApi(json ?? const <String, dynamic>{});
+    });
+    onProgress?.call(0.2);
+    final local = await _store.leer(predioId);
+    if (local != null && local.coincide(info)) {
+      onProgress?.call(1);
+      return;
+    }
+    final respuesta = await _llamar(
+        'El paquete de campo',
+        () => _api.getCondicional('/predios/$id/paquete-campo/contenido',
+            etag: local?.etag));
+    onProgress?.call(0.8);
+    final contenido = respuesta.cuerpo;
+    if (contenido == null) {
+      // 304: el servidor confirma que la copia del teléfono sigue siendo la vigente.
+      if (local != null) {
+        onProgress?.call(1);
+        return;
+      }
+      throw const DataException('El servidor no envió el paquete de campo.');
+    }
+    // Valida la forma del GeoJSON antes de guardar; si no cuadra, no se guarda nada.
+    MapaPredio.fromJson(Map<String, dynamic>.from(contenido['mapa'] as Map));
+    final hash = contenido['paqu_hash'] as String;
+    await _store.guardar(
+        predioId,
+        PaqueteLocal(
+          version: contenido['paqu_version'] as int,
+          hash: hash,
+          etag: respuesta.etag ?? '"$hash"',
+          guardadoEn: DateTime.now(),
+          contenido: contenido,
+        ));
+    onProgress?.call(1);
   }
 }
 
@@ -553,9 +612,11 @@ class ApiSyncRepository implements SyncRepository {
 }
 
 class ApiHistoryRepository implements HistoryRepository {
-  ApiHistoryRepository(this._api, this._pendientes);
+  ApiHistoryRepository(this._api, this._pendientes, {VisitDetailCache? cache})
+      : _cache = cache ?? VisitDetailCache();
   final ApiClient _api;
   final PendingStore _pendientes;
+  final VisitDetailCache _cache;
 
   /// Visitas del servidor (confirmadas) + visitas terminadas en este teléfono (pendientes).
   /// Si el servidor no responde y hay visitas locales, se muestran solo esas, marcadas como
@@ -582,6 +643,30 @@ class ApiHistoryRepository implements HistoryRepository {
     final ids = servidor.map((v) => v.id).toSet();
     return [...servidor, ...locales.where((v) => !ids.contains(v.id))]
       ..sort((a, b) => b.date.compareTo(a.date));
+  }
+
+  /// Una visita que solo existe en este teléfono se lee de la cola local. Una del servidor se
+  /// pide a `GET /visitas/{id}`; sin red se muestra la última copia guardada para este usuario.
+  @override
+  Future<VisitRecord> getVisit(String id) async {
+    final dueno = _yo;
+    for (final p in await _pendientes.forOwner(dueno)) {
+      if (p.kind == PendingKind.visita && p.id == id) {
+        return VisitRecord.fromJson(p.payload);
+      }
+    }
+    try {
+      final datos = await _llamar('El detalle de la visita', () async {
+        final json = await _api.get('/visitas/${Uri.encodeComponent(id)}');
+        return json ?? const <String, dynamic>{};
+      });
+      await _cache.save(dueno, id, datos);
+      return VisitRecord.fromApi(datos);
+    } on OfflineException {
+      final guardado = await _cache.read(dueno, id);
+      if (guardado == null) rethrow;
+      return VisitRecord.fromApi(guardado.datos, cachedAt: guardado.guardadoEn);
+    }
   }
 
   @override
@@ -1026,7 +1111,7 @@ String _concepto(String? v) => switch (v) {
     };
 
 /// `ResumenLote` (GET /lotes/{id}/resumen). Todo lo calcula el servidor.
-LotSummary lotSummaryFromApi(Map<String, dynamic> j) {
+LotSummary lotSummaryFromApi(Map<String, dynamic> j, {DateTime? cachedAt}) {
   final etapa = j['etapa'] as Map<String, dynamic>? ?? const {};
   final serie = [
     for (final p in (j['serie'] as List? ?? const []))
@@ -1058,6 +1143,7 @@ LotSummary lotSummaryFromApi(Map<String, dynamic> j) {
     activeFindings: _int(j['hallazgos']),
     pendingReviewLabel: j['revision_pendiente'] as String?,
     expectedHarvest: _fecha(j['cosecha_esperada']),
+    cachedAt: cachedAt,
   );
 }
 
@@ -1088,8 +1174,10 @@ InspectionConfig inspectionConfigFromApi(Map<String, dynamic> j,
 }
 
 class ApiAgronomistRepository implements AgronomistRepository {
-  ApiAgronomistRepository(this._api);
+  ApiAgronomistRepository(this._api, {LotSummaryCache? cache})
+      : _cache = cache ?? LotSummaryCache();
   final ApiClient _api;
+  final LotSummaryCache _cache;
 
   @override
   Future<List<FieldRecord>> getPendingRecords() =>
@@ -1118,13 +1206,24 @@ class ApiAgronomistRepository implements AgronomistRepository {
         return fieldRecordFromApi(r ?? const {});
       });
 
+  /// Sin conexión muestra la última copia guardada para este usuario, con su fecha.
   @override
-  Future<LotSummary> getLotSummary(String lotId) =>
-      _llamar('El resumen del lote', () async {
-        final r =
+  Future<LotSummary> getLotSummary(String lotId) async {
+    final dueno = _yo;
+    try {
+      final datos = await _llamar('El resumen del lote', () async {
+        final json =
             await _api.get('/lotes/${Uri.encodeComponent(lotId)}/resumen');
-        return lotSummaryFromApi(r ?? const {});
+        return json ?? const <String, dynamic>{};
       });
+      await _cache.save(dueno, lotId, datos);
+      return lotSummaryFromApi(datos);
+    } on OfflineException {
+      final guardado = await _cache.read(dueno, lotId);
+      if (guardado == null) rethrow;
+      return lotSummaryFromApi(guardado.datos, cachedAt: guardado.guardadoEn);
+    }
+  }
 
   @override
   Future<List<ActivityRecord>> getLotHistory(String lotId) =>

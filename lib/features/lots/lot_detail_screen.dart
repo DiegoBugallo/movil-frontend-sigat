@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../app/routes.dart';
 import '../../app/shell_nav.dart';
 import '../../core/widgets/widgets.dart';
 import '../../data/app_services.dart';
@@ -113,6 +114,12 @@ class _LotDetailScreenState extends State<LotDetailScreen> {
                   ? 'Sin visitas'
                   : Fmt.date(lot.lastVisit!)),
         ]),
+        const SizedBox(height: AppSpacing.lg),
+        SecondaryButton(
+          label: 'Ver resumen del lote',
+          onPressed: () => Navigator.of(context)
+              .pushNamed(AppRoutes.lotsSummary, arguments: lot.id),
+        ),
         if (lot.control != null) ...[
           const SizedBox(height: AppSpacing.lg),
           InfoTableCard(
