@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/mapa_predio.dart';
 import '../models/paquete_campo.dart';
 
 /// Paquete de campo guardado en el teléfono, con la versión y el hash con que se descargó.
@@ -23,6 +24,10 @@ class PaqueteLocal {
 
   /// Respuesta de `/paquete-campo/contenido` tal como llegó, sin interpretar.
   final Map<String, dynamic> contenido;
+
+  /// Capas del predio (predio, lotes, celdas y trampas) para MapLibre.
+  MapaPredio get mapa =>
+      MapaPredio.fromJson(Map<String, dynamic>.from(contenido['mapa'] as Map));
 
   /// ¿Esta copia sigue siendo la versión vigente que informa el servidor?
   bool coincide(PaqueteCampo info) =>

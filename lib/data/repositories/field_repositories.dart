@@ -1,4 +1,5 @@
 import '../models/lot.dart';
+import '../models/mapa_predio.dart';
 import '../models/reading.dart';
 import '../models/sync_models.dart';
 import '../models/trap.dart';
@@ -68,6 +69,9 @@ abstract class MapRepository {
   /// Descarga el mapa (requiere conexión). `onProgress` de 0 a 1.
   Future<void> downloadMap(String predioId,
       {void Function(double progress)? onProgress});
+
+  /// GeoJSON del predio guardado en el teléfono (sin red). null = paquete no descargado.
+  Future<MapaPredio?> getMapaLocal(String predioId);
 }
 
 abstract class SyncRepository {

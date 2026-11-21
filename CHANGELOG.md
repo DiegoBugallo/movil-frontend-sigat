@@ -41,6 +41,14 @@ nivel sprint y los pendientes, no los comentarios de una línea.
 - **`test/paquete_campo_test.dart`**: descarga, no volver a bajar con el mismo hash, invalidación por hash o por `invalidado_en`, disponibilidad sin red, declaración de sin conexión y **304**.
 - **Pendiente de verificar en CI**: las pruebas y el formato no se ejecutaron en el entorno donde se escribieron. `dart format`, `flutter analyze`, `flutter test` y `flutter build apk` deben correr en la rama antes de fusionar.
 
+## Sprint 3 · Paquete de campo: GeoJSON
+
+- **Modelo tipado**: `MapaPredio`, `ColeccionGeo` y `FeatureGeo` siguen el `MapaPredio` del contrato (predio, lotes, celdas y trampas, EPSG:4326). La geometría se conserva para MapLibre.
+- **Validación**: `downloadMap` comprueba la forma del mapa antes de guardar el paquete. Si no cuadra, no se guarda nada.
+- **Acceso sin red**: `MapRepository.getMapaLocal(predioId)` devuelve el GeoJSON guardado, o null si el paquete no se descargó. Es el punto de entrada para MapLibre en el siguiente sprint.
+- **Pruebas**: `test/mapa_predio_test.dart` (lectura sin red, sin paquete, forma inválida). El fixture del fake backend trae lotes y trampas.
+- **Pendiente**: dibujar las capas en MapLibre y el mosaico satelital siguen fuera de este sprint.
+
 ## Pendientes técnicos
 
 1. **Resolución de operaciones en la app** — la bandeja de sincronización muestra el

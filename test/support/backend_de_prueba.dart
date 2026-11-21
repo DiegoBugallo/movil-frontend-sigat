@@ -401,7 +401,50 @@ class BackendDePrueba {
         'invalidado_en': null,
         'predio': {'pred_id': 1, 'nombre': 'Predio de prueba'},
         'programa': {'prog_id': 1},
-        'mapa': {'type': 'FeatureCollection', 'features': <Object>[]},
+        'mapa': {
+          'predio': {
+            'type': 'Feature',
+            'id': 1,
+            'geometry': null,
+            'properties': {'nombre': 'Predio de prueba'},
+          },
+          'lotes': {
+            'type': 'FeatureCollection',
+            'features': [
+              {
+                'type': 'Feature',
+                'id': 'L-01',
+                'geometry': {
+                  'type': 'Polygon',
+                  'coordinates': [
+                    [
+                      [-72.0, -3.0],
+                      [-72.0, -3.1],
+                      [-71.9, -3.1],
+                      [-72.0, -3.0],
+                    ],
+                  ],
+                },
+                'properties': {'lote_id': 'L-01'},
+              },
+            ],
+          },
+          'celdas': {'type': 'FeatureCollection', 'features': <Object>[]},
+          'trampas': {
+            'type': 'FeatureCollection',
+            'features': [
+              {
+                'type': 'Feature',
+                'id': 'T-1',
+                'geometry': {
+                  'type': 'Point',
+                  'coordinates': [-71.95, -3.05],
+                },
+                'properties': {'tram_codigo': 'ICA-001'},
+              },
+            ],
+          },
+        },
         'catalogos': {'atrayente': <Object>[]},
         'mapa_base': {
           'estilo_url': null,

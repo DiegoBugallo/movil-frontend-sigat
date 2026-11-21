@@ -14,6 +14,7 @@ import '../models/field_record.dart';
 import '../models/home_summary.dart';
 import '../models/lot.dart';
 import '../models/lot_summary.dart';
+import '../models/mapa_predio.dart';
 import '../models/paquete_campo.dart';
 import '../models/photo_file.dart';
 import '../models/planning.dart';
@@ -211,6 +212,11 @@ class ApiMapRepository implements MapRepository {
     }
   }
 
+  /// GeoJSON del predio guardado en el teléfono, para dibujarlo en MapLibre sin red.
+  @override
+  Future<MapaPredio?> getMapaLocal(String predioId) async =>
+      (await _store.leer(predioId))?.mapa;
+
   @override
   Future<void> downloadMap(String predioId,
       {void Function(double progress)? onProgress}) async {
@@ -243,6 +249,8 @@ class ApiMapRepository implements MapRepository {
       }
       throw const DataException('El servidor no envió el paquete de campo.');
     }
+    // Valida la forma del GeoJSON antes de guardar; si no cuadra, no se guarda nada.
+    MapaPredio.fromJson(Map<String, dynamic>.from(contenido['mapa'] as Map));
     final hash = contenido['paqu_hash'] as String;
     await _store.guardar(
         predioId,
