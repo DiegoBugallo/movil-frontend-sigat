@@ -75,7 +75,7 @@ void main() {
     await iniciarSesion();
     prueba.sinRed = true;
 
-    expect(AppServices.history.getVisit('v-9'),
+    await expectLater(AppServices.history.getVisit('v-9'),
         throwsA(isA<OfflineException>()));
   });
 

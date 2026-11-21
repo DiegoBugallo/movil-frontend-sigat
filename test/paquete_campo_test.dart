@@ -90,7 +90,7 @@ void main() {
   test('sin conexión declarada no llama al servidor', () async {
     AppServices.isOnline.value = false;
 
-    expect(AppServices.maps.downloadMap('1'),
+    await expectLater(AppServices.maps.downloadMap('1'),
         throwsA(isA<OfflineException>()));
     expect(prueba.peticiones, isEmpty);
   });
