@@ -40,6 +40,9 @@ class BackendDePrueba {
 
   final operacionesRecibidas = <Map<String, dynamic>>[];
 
+  /// Paquetes de campo por predio (cuerpo de `PaqueteCampoContenido`).
+  final paquetes = <String, Map<String, dynamic>>{};
+
   final porRevisar = <String, String>{};
 
   final rechazadas = <String, String>{};
@@ -132,6 +135,12 @@ class BackendDePrueba {
 
     final extra = respuestasExtra['${req.method} $ruta'];
     if (extra != null) return _json(200, extra);
+
+    final paquete =
+        RegExp(r'^/predios/(\d+)/paquete-campo(/contenido)?$').firstMatch(ruta);
+    if (req.method == 'GET' && paquete != null) {
+      return _paquete(req, paquete[1]!, contenido: paquete[2] != null);
+    }
 
     switch ((req.method, ruta)) {
       case ('GET', '/auth/sesion'):
@@ -332,6 +341,38 @@ class BackendDePrueba {
         'datos': op['datos'],
       };
 
+  http.Response _paquete(http.Request req, String predId,
+      {required bool contenido}) {
+    final c = paquetes[predId];
+    if (c == null) {
+      return _problema(
+          404, 'PREDIO_SIN_PAQUETE', 'El predio no tiene paquete de campo.');
+    }
+    final hash = c['paqu_hash'] as String;
+    if (!contenido) {
+      return _json(200, {
+        'paqu_id': '00000000-0000-4000-8000-0000000000aa',
+        'pred_id': int.parse(predId),
+        'paqu_version': c['paqu_version'],
+        'prog_id': 1,
+        'paqu_hash': hash,
+        'generado_en': c['generado_en'],
+        'invalidado_en': c['invalidado_en'],
+        'tamano_bytes': null,
+      });
+    }
+    // Como el servidor real: ETag con comillas y 304 si el dispositivo ya tiene esa versión.
+    final etiqueta = '"$hash"';
+    if (req.headers['If-None-Match'] == etiqueta) {
+      return http.Response.bytes(const <int>[], 304,
+          headers: {'etag': etiqueta});
+    }
+    return http.Response.bytes(utf8.encode(jsonEncode(c)), 200, headers: {
+      'content-type': 'application/json',
+      'etag': etiqueta,
+    });
+  }
+
   http.Response _login(http.Request req) {
     final b = jsonDecode(req.body) as Map<String, dynamic>;
     final c = _cuentas[(b['usuario'] as String).trim().toLowerCase()];
@@ -349,6 +390,29 @@ class BackendDePrueba {
       'user': c.usuarioSesion,
     });
   }
+
+  /// Paquete de campo de prueba con las claves de `PaqueteCampoContenido`.
+  static Map<String, dynamic> paqueteDePrueba(
+          {required int version, required String hash}) =>
+      {
+        'paqu_version': version,
+        'paqu_hash': hash,
+        'generado_en': '2026-11-20T10:00:00+00:00',
+        'invalidado_en': null,
+        'predio': {'pred_id': 1, 'nombre': 'Predio de prueba'},
+        'programa': {'prog_id': 1},
+        'mapa': {'type': 'FeatureCollection', 'features': <Object>[]},
+        'catalogos': {'atrayente': <Object>[]},
+        'mapa_base': {
+          'estilo_url': null,
+          'plantillas_teselas': <String>[],
+          'atribucion': null,
+          'permite_descarga': false,
+          'zoom_min': null,
+          'zoom_max': null,
+          'limites': null,
+        },
+      };
 
   static http.Response _json(int status, Object? cuerpo) => http.Response.bytes(
         cuerpo == null ? const <int>[] : utf8.encode(jsonEncode(cuerpo)),

@@ -28,7 +28,8 @@ class ApiException implements Exception {
 
 /// Resultado de una consulta condicional (`If-None-Match`).
 class RespuestaCondicional {
-  const RespuestaCondicional({required this.modificado, this.cuerpo, this.etag});
+  const RespuestaCondicional(
+      {required this.modificado, this.cuerpo, this.etag});
 
   /// false = 304: el dispositivo ya tiene la versión vigente y no llega cuerpo.
   final bool modificado;

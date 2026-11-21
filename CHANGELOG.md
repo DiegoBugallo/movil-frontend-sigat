@@ -34,6 +34,13 @@ nivel sprint y los pendientes, no los comentarios de una línea.
 - **Fuera de alcance (no tocado)**: el bloque `mapa` (GeoJSON) del paquete se guarda tal cual llega y no se modela ni se expone. Queda para el equipo de mapas y el backend.
 - **Riesgo conocido**: `SharedPreferences` no es un almacén ideal para paquetes grandes. Si el GeoJSON crece, conviene migrar a archivos.
 
+## Sprint 3 · Fase 4: pruebas y fake backend
+
+- **Fake backend** (`test/support/backend_de_prueba.dart`): paquetes de campo por predio con `ETag`, respuesta **304** con `If-None-Match` y el helper `paqueteDePrueba`. Para el detalle de visita y el resumen se usa `respuestasExtra` con las rutas `GET /visitas/{id}` y `GET /lotes/{id}/resumen`.
+- **`test/detalle_visita_test.dart`**: detalle del servidor, copia con fecha sin red, error claro sin copia y resumen del lote sin red.
+- **`test/paquete_campo_test.dart`**: descarga, no volver a bajar con el mismo hash, invalidación por hash o por `invalidado_en`, disponibilidad sin red, declaración de sin conexión y **304**.
+- **Pendiente de verificar en CI**: las pruebas y el formato no se ejecutaron en el entorno donde se escribieron. `dart format`, `flutter analyze`, `flutter test` y `flutter build apk` deben correr en la rama antes de fusionar.
+
 ## Pendientes técnicos
 
 1. **Resolución de operaciones en la app** — la bandeja de sincronización muestra el

@@ -200,8 +200,8 @@ class ApiMapRepository implements MapRepository {
     if (local == null) return false;
     if (!AppServices.isOnline.value) return true;
     try {
-      final json =
-          await _api.get('/predios/${Uri.encodeComponent(predioId)}/paquete-campo');
+      final json = await _api
+          .get('/predios/${Uri.encodeComponent(predioId)}/paquete-campo');
       final info = PaqueteCampo.fromApi(json ?? const <String, dynamic>{});
       if (local.coincide(info)) return true;
       await _store.borrar(predioId);
