@@ -19,8 +19,8 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
   late Future<VisitRecord> _future =
       AppServices.history.getVisit(widget.visitId);
 
-  void _reintentar() => setState(
-      () => _future = AppServices.history.getVisit(widget.visitId));
+  void _reintentar() =>
+      setState(() => _future = AppServices.history.getVisit(widget.visitId));
 
   @override
   Widget build(BuildContext context) {
@@ -121,7 +121,7 @@ class _VisitDetailScreenState extends State<VisitDetailScreen> {
         null => 'Aún no enviada',
         'pendiente' => 'Pendiente de revisión',
         'aceptado' => 'Aceptada',
-        _ => estado ?? '',
+        _ => estado,
       };
 
   static StatusTone _toneRevision(String? estado) => switch (estado) {

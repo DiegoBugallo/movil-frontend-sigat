@@ -75,8 +75,8 @@ void main() {
     await iniciarSesion();
     prueba.sinRed = true;
 
-    await expectLater(AppServices.history.getVisit('v-9'),
-        throwsA(isA<OfflineException>()));
+    await expectLater(
+        AppServices.history.getVisit('v-9'), throwsA(isA<OfflineException>()));
   });
 
   test('resumen del lote: sin red usa la última copia', () async {

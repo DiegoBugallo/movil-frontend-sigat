@@ -90,8 +90,8 @@ void main() {
   test('sin conexión declarada no llama al servidor', () async {
     AppServices.isOnline.value = false;
 
-    await expectLater(AppServices.maps.downloadMap('1'),
-        throwsA(isA<OfflineException>()));
+    await expectLater(
+        AppServices.maps.downloadMap('1'), throwsA(isA<OfflineException>()));
     expect(prueba.peticiones, isEmpty);
   });
 
@@ -100,9 +100,8 @@ void main() {
     await AppServices.maps.downloadMap('1');
     final etiqueta = '"${'a' * 64}"';
 
-    final respuesta = await AppServices.api.getCondicional(
-        '/predios/1/paquete-campo/contenido',
-        etag: etiqueta);
+    final respuesta = await AppServices.api
+        .getCondicional('/predios/1/paquete-campo/contenido', etag: etiqueta);
 
     expect(respuesta.modificado, isFalse);
     expect(respuesta.cuerpo, isNull);

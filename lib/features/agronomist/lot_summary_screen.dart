@@ -81,7 +81,8 @@ class _LotSummaryScreenState extends State<LotSummaryScreen> {
           ? null
           : BottomActions(children: [
               PrimaryButton(
-                label: _exporting ? 'Generando PDF...' : 'Exportar resumen (PDF)',
+                label:
+                    _exporting ? 'Generando PDF...' : 'Exportar resumen (PDF)',
                 icon: Icons.ios_share,
                 isLoading: _exporting,
                 color: AppColors.primaryDark,
@@ -95,9 +96,7 @@ class _LotSummaryScreenState extends State<LotSummaryScreen> {
     if (s == null) {
       if (_loading) return const AppLoader();
       return ErrorState(
-          error: _error,
-          what: 'el resumen del lote',
-          onRetry: _cargar);
+          error: _error, what: 'el resumen del lote', onRetry: _cargar);
     }
     return ResponsiveBody(
       child: ListView(
@@ -128,8 +127,7 @@ class _LotSummaryScreenState extends State<LotSummaryScreen> {
                 ),
                 const SizedBox(height: AppSpacing.md),
                 Text('Escenario: ${s.scenario.toLowerCase()}',
-                    style:
-                        AppText.h3.copyWith(color: AppColors.primaryDark)),
+                    style: AppText.h3.copyWith(color: AppColors.primaryDark)),
                 Text(
                   'MTD ${s.mtd == null ? 'sin cálculo' : Fmt.fixed(s.mtd!, 2)} · '
                   'Umbral de exportación: ${s.exportThreshold.toLowerCase()} · '

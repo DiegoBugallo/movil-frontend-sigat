@@ -44,8 +44,7 @@ class LotSummaryCache {
     final fecha = DateTime.tryParse('${entrada['guardado_en']}');
     final datos = entrada['datos'];
     if (fecha == null || datos is! Map) return null;
-    return CachedLotSummary(
-        Map<String, dynamic>.from(datos), fecha.toLocal());
+    return CachedLotSummary(Map<String, dynamic>.from(datos), fecha.toLocal());
   }
 
   static String _llave(String dueno, String lotId) => '$dueno|$lotId';
