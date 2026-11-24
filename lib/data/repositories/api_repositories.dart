@@ -33,25 +33,20 @@ import 'planning_repository.dart';
 import 'producer_repository.dart';
 import 'profile_repository.dart';
 
-/// Implementaciones REALES de los contratos de la app contra `sigat-durazno-api`.
-///
-/// Estado del backend (29-oct-2026):
+/// Estado del backend (Sprint 3 - Noviembre 2026):
 ///
 /// | Módulo | Rutas | Estado |
 /// |---|---|---|
 /// | Avisos | `GET /yo/notificaciones`, `/conteo`, `POST …/leida(s)` | FUNCIONA |
 /// | Perfil | `GET /yo/perfil` | FUNCIONA (foto: pendiente `/archivos`) |
-/// | Inicio | `GET /yo/inicio` | FUNCIONA (conteos del técnico: pendiente) |
-/// | Lotes y trampas (consulta) | `GET /lotes…`, `GET /trampas…` | FUNCIONA |
-/// | Visitas, revisión, resumen, programa | `/visitas`, `/revisiones…`, `/lotes/{id}/resumen` | 501 |
-/// | Productor | `/productor/cultivo`, `/actividad` | 501 |
-/// | Planificación | `/planificaciones…` | 501 |
-/// | Sincronización | `POST /sincronizacion/lotes` | 501 |
-///
-/// Cuando una ruta responde 501, la pantalla muestra «…todavía no está disponible en el
-/// servidor» ([NotAvailableYet]); nunca datos inventados. Lo que el técnico o el productor
-/// capturan en campo se guarda en el TELÉFONO ([PendingStore]) y queda «pendiente de
-/// enviar» hasta que el servidor confirme que lo recibió.
+/// | Inicio | `GET /yo/inicio` | FUNCIONA |
+/// | Lotes y trampas | `GET /lotes`, `GET /lotes/{id}`, `GET /trampas` | FUNCIONA |
+/// | Paquete de campo | `GET /predios/{id}/paquete-campo`, `.../contenido` (ETag 304) | FUNCIONA |
+/// | Historial de visitas | `GET /visitas`, `GET /visitas/{id}` | FUNCIONA |
+/// | Resumen fitosanitario | `GET /lotes/{id}/resumen` (MTD, umbral, etapa) | FUNCIONA |
+/// | Sincronización | `POST /sincronizacion/lotes`, `GET /operaciones` | FUNCIONA |
+/// | Productor | `/productor/cultivo`, `/actividad` | Pendiente Sprint 4 |
+/// | Planificación | `/planificaciones…` | Pendiente Sprint 4 |
 
 /// Dueño para CONSULTAR la cola local. Para guardar se usa [RecordOwner.requerido].
 String get _yo => RecordOwner.paraLectura();
