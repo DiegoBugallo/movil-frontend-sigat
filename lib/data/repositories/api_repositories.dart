@@ -33,7 +33,6 @@ import 'planning_repository.dart';
 import 'producer_repository.dart';
 import 'profile_repository.dart';
 
-
 /// Estado del backend (Sprint 3 - Noviembre 2026):
 ///
 /// | Módulo | Rutas | Estado |
@@ -48,8 +47,6 @@ import 'profile_repository.dart';
 /// | Sincronización | `POST /sincronizacion/lotes`, `GET /operaciones` | FUNCIONA |
 /// | Productor | `/productor/cultivo`, `/actividad` | Pendiente Sprint 4 |
 /// | Planificación | `/planificaciones…` | Pendiente Sprint 4 |
-
-
 
 /// Dueño para CONSULTAR la cola local. Para guardar se usa [RecordOwner.requerido].
 String get _yo => RecordOwner.paraLectura();
